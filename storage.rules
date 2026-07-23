@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Function to get the user's role from their Firestore profile
+    function getUserRole() {
+      let docData = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return docData != null ? docData.role : null;
+    }
+
+    // Function to get the user's collegeId from their Firestore profile
+    function getUserCollegeId() {
+      let docData = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return docData != null ? docData.collegeId : null;
+    }
+
+    // Check if uploaded file is an image and under 5MB
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*') 
+             && request.resource.size < 5 * 1024 * 1024;
+    }
+    
+    match /colleges/{collegeId} {
+      match /students/{studentId}/{fileName} {
+        // Anyone in the college can view student photos
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
+          
+        // College admins can upload, or the student themselves can upload their own photo
+        // Assuming studentId matches request.auth.uid for the student, or we just allow students in the college to upload for now.
+        // For stricter control, we would need to check if the studentId belongs to the authenticated user.
+        // For now, allow college_admin and students to upload valid images.
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student'])) 
+          && isValidImage();
+      }
+      
+      // Default fallback for other paths in the college
+      match /{allPaths=**} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
+        
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+      }
+    }
+  }
+}

@@ -1,0 +1,123 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get the user's role from their global profile
+    function getUserRole() {
+      let docData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return docData != null ? docData.role : null;
+    }
+
+    // Get the user's collegeId from their global profile
+    function getUserCollegeId() {
+      let docData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return docData != null ? docData.collegeId : null;
+    }
+
+    // Users Collection (Global Identity & Role Registry)
+    // CRITICAL FIX: Users cannot write to their own profile to prevent role/college escalation.
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || getUserRole() == 'platform_admin');
+      // Only platform admins or backend cloud functions can update this document
+      allow write: if isAuthenticated() && getUserRole() == 'platform_admin';
+    }
+
+    // Colleges Collection
+    match /colleges/{collegeId} {
+      // Any authenticated user in this college, or platform admin
+      allow read: if isAuthenticated() && (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
+      allow write: if isAuthenticated() && getUserRole() == 'platform_admin';
+      
+      // Students Subcollection
+      match /students/{studentId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'guard', 'student']));
+        
+        // Only college_admin and platform_admin can create/update students
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+      }
+
+      // Guards Subcollection
+      match /guards/{guardId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'guard']));
+          
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+      }
+
+      // Admins Subcollection
+      match /admins/{adminId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+          
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+      }
+
+      // Scan Logs
+      match /scanLogs/{logId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student'])); // Students might view their own logs
+          
+        // Guards create scan logs
+        allow create: if isAuthenticated() && 
+          getUserCollegeId() == collegeId && getUserRole() == 'guard';
+          
+        allow update, delete: if isAuthenticated() && getUserRole() == 'platform_admin';
+      }
+
+      // Audit Logs
+      match /audit_logs/{logId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+          
+        // College admins create audit logs
+        allow create: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+          
+        allow update, delete: if false; // Audit logs should never be modified or deleted directly
+      }
+
+      // Devices Registry
+      match /devices/{deviceId} {
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student']));
+          
+        // Student creates device mapping on login, Admin manages
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student']));
+      }
+
+      // College Settings
+      match /settings/{settingDoc} {
+        // Everyone in the college might need to read some settings (e.g. maintenance mode)
+        allow read: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
+          
+        // Only admins can write
+        allow write: if isAuthenticated() && 
+          (getUserRole() == 'platform_admin' || 
+          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
+      }
+    }
+  }
+}
