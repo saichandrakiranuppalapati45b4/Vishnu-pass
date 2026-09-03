@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, Lock, Eye, EyeOff, Fingerprint, ShieldCheck, Smartphone, Clock, FileText } from 'lucide-react';
-import { getAuth, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
+import { supabase } from '../../config/supabase';
 
 const SecurityPassword = ({ onBack }) => {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -14,10 +14,6 @@ const SecurityPassword = ({ onBack }) => {
     const [message, setMessage] = useState(null);
 
     const handleUpdatePassword = async () => {
-        if (!currentPassword) {
-            setMessage({ type: 'error', text: 'Please enter your current password.' });
-            return;
-        }
         if (!newPassword || !confirmPassword) {
             setMessage({ type: 'error', text: 'Please fill all password fields.' });
             return;
@@ -26,42 +22,19 @@ const SecurityPassword = ({ onBack }) => {
             setMessage({ type: 'error', text: 'New passwords do not match.' });
             return;
         }
-        if (newPassword.length < 12) {
-            setMessage({ type: 'error', text: 'Password must be at least 12 characters.' });
-            return;
-        }
-        if (!/[A-Z]/.test(newPassword)) {
-            setMessage({ type: 'error', text: 'Password must include at least one uppercase letter (A-Z).' });
-            return;
-        }
-        if (!/[0-9]/.test(newPassword)) {
-            setMessage({ type: 'error', text: 'Password must include at least one number (0-9).' });
-            return;
-        }
-        if (!/[!@#$%^&*]/.test(newPassword)) {
-            setMessage({ type: 'error', text: 'Password must include at least one special character (!@#$%^&*).' });
+        if (newPassword.length < 8) {
+            setMessage({ type: 'error', text: 'Password must be at least 8 characters.' });
             return;
         }
 
         setUpdating(true);
         setMessage(null);
         try {
-            const auth = getAuth();
-            const user = auth.currentUser;
-            if (!user || !user.email) throw new Error('No active session found.');
+            const { error } = await supabase.auth.updateUser({
+                password: newPassword
+            });
 
-            // Re-authenticate
-            const credential = EmailAuthProvider.credential(user.email, currentPassword);
-            try {
-                await reauthenticateWithCredential(user, credential);
-            } catch (err) {
-                setMessage({ type: 'error', text: 'Current password is incorrect.' });
-                setUpdating(false);
-                return;
-            }
-
-            // Update password
-            await updatePassword(user, newPassword);
+            if (error) throw error;
             
             setMessage({ type: 'success', text: 'Password updated successfully!' });
             setCurrentPassword('');

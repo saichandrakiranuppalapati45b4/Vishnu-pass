@@ -2,11 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Plus, Search, Filter, Download, MoreVertical,
     ChevronDown, Trash2, User, ChevronLeft, ChevronRight,
-    ChevronsLeft, ChevronsRight, Pencil, Loader2
+    ChevronsLeft, ChevronsRight, Pencil, Loader2, UserX
 } from 'lucide-react';
 
-import { db } from '../../config/firebase';
-import { collection, getDocs, doc, getDoc, updateDoc, deleteDoc, query, where, orderBy, getCountFromServer } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
 import EditStudentModal from './EditStudentModal';
@@ -34,7 +33,7 @@ const statusStyles = {
     Inactive: 'bg-rose-50 text-rose-600 border-rose-200',
 };
 
-const StudentManagement = ({ adminData, onNavigate }) => {
+const StudentManagement = ({ collegeData, onNavigate }) => {
     const [students, setStudents] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [totalCount, setTotalCount] = useState(0);
@@ -59,18 +58,14 @@ const StudentManagement = ({ adminData, onNavigate }) => {
     const actionMenuRef = useRef(null);
 
     useEffect(() => {
-        if (adminData?.collegeId) {
-            fetchDepartments();
-            fetchBatches();
-        }
-    }, [adminData]);
+        fetchDepartments();
+        fetchBatches();
+    }, []);
 
     useEffect(() => {
-        if (adminData?.collegeId) {
-            fetchStudents();
-        }
+        fetchStudents();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [deptFilter, statusFilter, batchFilter, adminData]);
+    }, [deptFilter, statusFilter, batchFilter]);
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -86,28 +81,38 @@ const StudentManagement = ({ adminData, onNavigate }) => {
     }, []);
 
     const fetchDepartments = async () => {
-        const q = query(collection(db, `colleges/${adminData.collegeId}/departments`), orderBy('name'));
-        const snapshot = await getDocs(q);
-        const data = [];
-        snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-        setDepartments(data);
+        try {
+            const { data, error } = await supabase
+                .from('departments')
+                .select('*')
+                .order('name');
+            if (data && !error) setDepartments(data);
+        } catch (e) {
+            console.warn('Could not fetch departments:', e);
+            setDepartments([]);
+        }
     };
 
     const fetchBatches = async () => {
-        const q = query(collection(db, `colleges/${adminData.collegeId}/batches`), orderBy('name'));
-        const snapshot = await getDocs(q);
-        const data = [];
-        snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-        setBatches(data);
+        try {
+            const { data, error } = await supabase
+                .from('batches')
+                .select('*')
+                .order('name');
+            if (data && !error) setBatches(data);
+        } catch (e) {
+            console.warn('Could not fetch batches:', e);
+            setBatches([]);
+        }
     };
 
     const handleDeleteBatch = async () => {
         if (!selectedBatchToDelete) return;
 
         const confirmed = await showModal({
-            title: 'Delete Batch and Students',
-            message: `Are you sure you want to delete Batch ${selectedBatchToDelete}? This will permanently delete the batch AND all students belonging to this batch, along with their scan history. This action cannot be undone.`,
-            confirmText: 'Delete All',
+            title: 'Deactivate Batch Students',
+            message: `Are you sure you want to deactivate students in Batch ${selectedBatchToDelete}?`,
+            confirmText: 'Deactivate All',
             cancelText: 'Cancel',
             type: 'warning'
         });
@@ -115,17 +120,11 @@ const StudentManagement = ({ adminData, onNavigate }) => {
         if (!confirmed) return;
 
         try {
-            // NOTE: In a real app, large deletes should be done via Cloud Functions or batches.
-            // For now, we will mark them as Inactive to avoid massive data loss.
-            const studentsRef = collection(db, `colleges/${adminData.collegeId}/students`);
-            const q = query(studentsRef, where('batch', '==', selectedBatchToDelete));
-            const snapshot = await getDocs(q);
-            
-            for (const docSnap of snapshot.docs) {
-                await updateDoc(docSnap.ref, { status: 'Inactive' });
-            }
+            await supabase
+                .from('students')
+                .update({ status: 'Inactive' })
+                .eq('batch', selectedBatchToDelete);
 
-            // Log the action
             await logAuditAction({
                 action: 'Deactivated Batch Students',
                 resource: selectedBatchToDelete
@@ -143,54 +142,44 @@ const StudentManagement = ({ adminData, onNavigate }) => {
     const fetchStudents = async () => {
         setIsLoading(true);
         try {
-            const studentsRef = collection(db, `colleges/${adminData.collegeId}/students`);
-            
-            let queryConstraints = [];
-            
+            let queryBuilder = supabase
+                .from('students')
+                .select('*, departments(name)');
+
             if (deptFilter !== 'all') {
-                queryConstraints.push(where('department_id', '==', deptFilter));
+                queryBuilder = queryBuilder.eq('department_id', deptFilter);
             }
-
             if (statusFilter === 'Active Only') {
-                queryConstraints.push(where('status', '==', 'Active'));
+                queryBuilder = queryBuilder.eq('status', 'Active');
             }
-
             if (batchFilter !== 'all') {
-                queryConstraints.push(where('batch', '==', batchFilter));
+                queryBuilder = queryBuilder.eq('batch', batchFilter);
             }
 
-            const q = query(studentsRef, ...queryConstraints, orderBy('created_at', 'desc'));
-            
-            // Get total count
-            const countSnap = await getCountFromServer(query(studentsRef, ...queryConstraints));
-            setTotalCount(countSnap.data().count);
+            const { data, error, count } = await queryBuilder.order('created_at', { ascending: false });
 
-            const snapshot = await getDocs(q);
-            const data = [];
-            
-            // We need to resolve department names
-            // For simplicity, we just use the loaded departments array
-            const deptMap = {};
-            departments.forEach(d => { deptMap[d.id] = d; });
-            
-            snapshot.forEach(doc => {
-                const studentData = doc.data();
-                data.push({
-                    id: doc.id,
-                    ...studentData,
-                    departments: deptMap[studentData.department_id] || { name: studentData.department || 'General' }
-                });
-            });
-            
-            setStudents(data);
+            if (error) throw error;
+
+            const mapped = (data || []).map(s => ({
+                ...s,
+                name: s.full_name,
+                rollNumber: s.student_id,
+                year: s.year_of_study,
+                hostel: s.hostel_type
+            }));
+
+            setStudents(mapped);
+            setTotalCount(mapped.length);
         } catch (error) {
             console.error("Error fetching students:", error);
+            setStudents([]);
+            setTotalCount(0);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleDeleteStudent = async (studentId, studentName) => {
+    const handleDeactivateStudent = async (studentId, studentName) => {
         const confirmed = await showModal({
             title: 'Deactivate Student',
             message: `Are you sure you want to deactivate ${studentName}?`,
@@ -199,15 +188,14 @@ const StudentManagement = ({ adminData, onNavigate }) => {
             type: 'warning'
         });
 
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed) return;
 
         try {
-            const studentRef = doc(db, `colleges/${adminData.collegeId}/students`, studentId);
-            await updateDoc(studentRef, { status: 'Inactive' });
+            await supabase
+                .from('students')
+                .update({ status: 'Inactive' })
+                .eq('id', studentId);
 
-            // Log the action
             await logAuditAction({
                 action: 'Deactivated Student',
                 resource: studentName,
@@ -219,6 +207,37 @@ const StudentManagement = ({ adminData, onNavigate }) => {
             showNotification(`${studentName} deactivated successfully.`, 'success');
         } catch (error) {
             showNotification('Failed to deactivate student. Please try again.', 'error');
+        }
+    };
+
+    const handlePermanentDeleteStudent = async (studentId, studentName) => {
+        const confirmed = await showModal({
+            title: 'Delete Student Permanently',
+            message: `Are you sure you want to PERMANENTLY delete ${studentName}? This action cannot be undone.`,
+            confirmText: 'Delete Permanently',
+            cancelText: 'Cancel',
+            type: 'warning'
+        });
+
+        if (!confirmed) return;
+
+        try {
+            await supabase
+                .from('students')
+                .delete()
+                .eq('id', studentId);
+
+            await logAuditAction({
+                action: 'Deleted Student Permanently',
+                resource: studentName,
+                details: { id: studentId }
+            });
+
+            fetchStudents();
+            setActionMenuId(null);
+            showNotification(`${studentName} permanently deleted.`, 'success');
+        } catch (error) {
+            showNotification('Failed to delete student. Please try again.', 'error');
         }
     };
 
@@ -253,7 +272,7 @@ const StudentManagement = ({ adminData, onNavigate }) => {
 
             {/* Breadcrumb */}
             <div className="text-sm text-gray-400 font-medium mb-5">
-                <span className="text-gray-400">Admin</span>
+                <span className="text-gray-400">College</span>
                 <span className="mx-2">/</span>
                 <span className="text-gray-700 font-semibold">Students</span>
             </div>
@@ -336,7 +355,7 @@ const StudentManagement = ({ adminData, onNavigate }) => {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <table className="w-full text-left text-sm">
                     <thead>
                         <tr className="border-b border-gray-100">
@@ -362,7 +381,7 @@ const StudentManagement = ({ adminData, onNavigate }) => {
                                 <td colSpan="5" className="px-6 py-12 text-center text-gray-400">No student records found.</td>
                             </tr>
                         ) : (
-                            students.map((student) => (
+                            students.map((student, index) => (
                                 <tr
                                     key={student.id}
                                     onClick={() => onNavigate('student-profile', student.id)}
@@ -370,16 +389,26 @@ const StudentManagement = ({ adminData, onNavigate }) => {
                                 >
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            {student.photo_url ? (
-                                                <img src={student.photo_url} alt="" className="w-9 h-9 rounded-full object-cover border border-gray-100" />
-                                            ) : (
-                                                <div
-                                                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                                    style={{ backgroundColor: stringToColor(student.full_name) }}
-                                                >
-                                                    {student.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                                                </div>
-                                            )}
+                                            {student.photo_url || student.photoUrl ? (
+                                                <img
+                                                    src={student.photo_url || student.photoUrl}
+                                                    alt=""
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                        if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                                                    }}
+                                                    className="w-9 h-9 rounded-full object-cover border border-gray-100"
+                                                />
+                                            ) : null}
+                                            <div
+                                                className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                                style={{
+                                                    backgroundColor: stringToColor(student.full_name || student.name || 'Student'),
+                                                    display: (student.photo_url || student.photoUrl) ? 'none' : 'flex'
+                                                }}
+                                            >
+                                                {(student.full_name || student.name || 'S').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                            </div>
                                             <div>
                                                 <p className="font-semibold text-gray-900 text-sm">{student.full_name}</p>
                                                 <p className="text-xs text-gray-400 font-medium">{student.email}</p>
@@ -397,13 +426,13 @@ const StudentManagement = ({ adminData, onNavigate }) => {
                                         <div className="relative inline-block text-left" ref={actionMenuId === student.id ? actionMenuRef : null}>
                                             <button
                                                 onClick={() => setActionMenuId(actionMenuId === student.id ? null : student.id)}
-                                                className={`p-1.5 text-gray-400 hover:text-gray-600 transition-colors rounded-lg ${actionMenuId === student.id ? 'bg-gray-100 text-gray-900' : 'opacity-0 group-hover:opacity-100'}`}
+                                                className={`p-1.5 text-gray-400 hover:text-gray-600 transition-colors rounded-lg ${actionMenuId === student.id ? 'bg-gray-100 text-gray-900 opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                             >
                                                 <MoreVertical className="w-4 h-4" />
                                             </button>
 
                                             {actionMenuId === student.id && (
-                                                <div className="absolute z-50 right-0 mt-2 w-44 bg-white border border-gray-100 rounded-xl shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95">
+                                                <div className={`absolute z-50 right-0 ${students.length > 2 && index >= students.length - 2 ? 'bottom-full mb-2' : 'top-full mt-2'} w-44 bg-white border border-gray-100 rounded-xl shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95`}>
                                                     <div className="py-1.5 px-1">
                                                         <button
                                                             onClick={(e) => {
@@ -411,7 +440,7 @@ const StudentManagement = ({ adminData, onNavigate }) => {
                                                                 setEditingStudent(student);
                                                                 setActionMenuId(null);
                                                             }}
-                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-orange-50 hover:text-[#f47c20] rounded-lg transition-colors"
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-orange-50 hover:text-[#f47c20] rounded-lg transition-colors cursor-pointer"
                                                         >
                                                             <Pencil className="w-3.5 h-3.5" />
                                                             Edit Record
@@ -419,13 +448,24 @@ const StudentManagement = ({ adminData, onNavigate }) => {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleDeleteStudent(student.id, student.full_name);
+                                                                handleDeactivateStudent(student.id, student.full_name);
                                                                 setActionMenuId(null);
                                                             }}
-                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                                        >
+                                                            <UserX className="w-3.5 h-3.5" />
+                                                            Deactivate
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handlePermanentDeleteStudent(student.id, student.full_name, student.student_id);
+                                                                setActionMenuId(null);
+                                                            }}
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
-                                                            Deactivate
+                                                            Delete
                                                         </button>
                                                     </div>
                                                 </div>
@@ -441,7 +481,7 @@ const StudentManagement = ({ adminData, onNavigate }) => {
             {/* Modals */}
             {editingStudent && (
                 <EditStudentModal
-                    adminData={adminData}
+                    collegeData={collegeData}
                     student={editingStudent}
                     onClose={() => setEditingStudent(null)}
                     onUpdate={fetchStudents}

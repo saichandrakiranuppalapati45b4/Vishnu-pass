@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Shield, Clock, Zap, Loader2, Fingerprint, Camera, ShieldCheck, X, LogIn, LogOut } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, doc, getDoc, addDoc, updateDoc, onSnapshot, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import VerificationResult from './VerificationResult';
 
@@ -21,7 +20,6 @@ const ScanScreen = ({ studentData, onBack }) => {
     const movementTypeRef = useRef(null);
     const limitReachedRef = useRef(false);
     const scanLock = useRef(false);
-    const unsubscribeRef = useRef(null);
 
     useEffect(() => {
         sessionIdRef.current = sessionId;
@@ -50,44 +48,50 @@ const ScanScreen = ({ studentData, onBack }) => {
 
     // Cleanup session on expire
     useEffect(() => {
-        if (status === 'expired' && sessionId && studentData?.collegeId) {
-            updateDoc(doc(db, `colleges/${studentData.collegeId}/scanLogs`, sessionId), {
-                status: 'expired'
-            }).catch(console.error);
+        if (status === 'expired' && sessionId) {
+            supabase
+                .from('scan_sessions')
+                .update({ status: 'expired' })
+                .eq('id', sessionId)
+                .then();
         }
-    }, [status, sessionId, studentData]);
+    }, [status, sessionId]);
 
     // Realtime subscription for Guard Approval
     useEffect(() => {
-        if (!sessionId || !studentData?.collegeId) return;
+        if (!sessionId) return;
 
-        const docRef = doc(db, `colleges/${studentData.collegeId}/scanLogs`, sessionId);
-        
-        const unsubscribe = onSnapshot(docRef, (snapshot) => {
-            if (!snapshot.exists()) return;
-            const data = snapshot.data();
-            
-            if (data.warning) setSessionWarning(data.warning);
-            
-            if (data.status === 'approved') {
-                setStatus('approved');
-            } else if (data.status === 'completed' || data.status === 'success') {
-                setStatus('completed');
-                setVerifiedAt(new Date().toISOString());
-            } else if (data.status === 'expired') {
-                setStatus('expired');
-            } else if (data.status === 'rejected' || data.status === 'denied') {
-                setStatus('completed'); // Shows the rejected state in the result component
-                setVerifiedAt(new Date().toISOString());
-            }
-        });
+        const channel = supabase
+            .channel(`scan-session-${sessionId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'scan_sessions',
+                filter: `id=eq.${sessionId}`
+            }, (payload) => {
+                const data = payload.new;
+                if (!data) return;
 
-        unsubscribeRef.current = unsubscribe;
+                if (data.warning) setSessionWarning(data.warning);
+
+                if (data.status === 'approved') {
+                    setStatus('approved');
+                } else if (data.status === 'completed' || data.status === 'success') {
+                    setStatus('completed');
+                    setVerifiedAt(new Date().toISOString());
+                } else if (data.status === 'expired') {
+                    setStatus('expired');
+                } else if (data.status === 'rejected' || data.status === 'denied') {
+                    setStatus('completed');
+                    setVerifiedAt(new Date().toISOString());
+                }
+            })
+            .subscribe();
 
         return () => {
-            if (unsubscribeRef.current) unsubscribeRef.current();
+            supabase.removeChannel(channel);
         };
-    }, [sessionId, studentData]);
+    }, [sessionId]);
 
     // Unmount cleanup logic
     useEffect(() => {
@@ -96,14 +100,14 @@ const ScanScreen = ({ studentData, onBack }) => {
             const currentStatus = statusRef.current;
 
             if (currentSession && (currentStatus === 'requesting' || currentStatus === 'approved' || currentStatus === 'pending')) {
-                if (studentData?.collegeId) {
-                    updateDoc(doc(db, `colleges/${studentData.collegeId}/scanLogs`, currentSession), {
-                        status: 'cancelled'
-                    }).catch(console.error);
-                }
+                supabase
+                    .from('scan_sessions')
+                    .update({ status: 'cancelled' })
+                    .eq('id', currentSession)
+                    .then();
             }
         };
-    }, [studentData]);
+    }, []);
 
     const handleRequestAccess = async (type) => {
         setError(null);
@@ -111,59 +115,22 @@ const ScanScreen = ({ studentData, onBack }) => {
         movementTypeRef.current = type;
         
         try {
-            if (!studentData?.student_id || !studentData?.collegeId) {
+            if (!studentData?.student_id && !studentData?.id) {
                 throw new Error("Student data missing. Please re-login.");
             }
 
-            const collegeId = studentData.collegeId;
-            const scanLogsRef = collection(db, `colleges/${collegeId}/scanLogs`);
-
-            // 0. Check current campus status to prevent redundant requests
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            
-            const qRecent = query(
-                scanLogsRef,
-                where('studentId', '==', studentData.student_id),
-                where('scannedAt', '>=', Timestamp.fromDate(todayStart)),
-                orderBy('scannedAt', 'desc'),
-                limit(1)
-            );
-            
-            const recentDocs = await getDocs(qRecent);
-            if (!recentDocs.empty) {
-                const latestSession = recentDocs.docs[0].data();
-                const s = (latestSession.status || '').toLowerCase();
-                const isPositive = ['success', 'completed', 'approved', 'authorized'].includes(s);
-                
-                if (isPositive && latestSession.movement_type === type) {
-                    throw new Error(`You are already recorded as ${type} campus today. Access granted.`);
-                }
-            }
-
-            // Cleanup any existing pending sessions for this student
-            const qPending = query(
-                scanLogsRef,
-                where('studentId', '==', studentData.student_id),
-                where('status', '==', 'pending')
-            );
-            const pendingDocs = await getDocs(qPending);
-            const updatePromises = pendingDocs.docs.map(d => updateDoc(d.ref, { status: 'cancelled' }));
-            await Promise.all(updatePromises);
+            const studentIdentifier = studentData.student_id || studentData.id;
 
             // Fetch Policies
             let policies = null;
-            const settingsRef = doc(db, `colleges/${collegeId}/settings/portal`);
-            const settingsDoc = await getDoc(settingsRef);
-            if (settingsDoc.exists() && settingsDoc.data().student_policies) {
-                policies = settingsDoc.data().student_policies;
-            }
-            
-            if (typeof policies === 'string') {
-                try {
-                    policies = JSON.parse(policies);
-                } catch (e) {
-                }
+            const { data: policyData } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'student_policies')
+                .maybeSingle();
+
+            if (policyData?.value) {
+                policies = typeof policyData.value === 'string' ? JSON.parse(policyData.value) : policyData.value;
             }
 
             let isLimitReachedCurrent = false;
@@ -178,16 +145,12 @@ const ScanScreen = ({ studentData, onBack }) => {
                     startOfMonth.setDate(1);
                     startOfMonth.setHours(0, 0, 0, 0);
                     
-                    const qCount = query(
-                        scanLogsRef,
-                        where('studentId', '==', studentData.student_id),
-                        where('movement_type', '==', type),
-                        where('status', 'in', ['completed', 'success']),
-                        where('scannedAt', '>=', Timestamp.fromDate(startOfMonth))
-                    );
-                    
-                    const snapshot = await getCountFromServer(qCount);
-                    const count = snapshot.data().count;
+                    const { count } = await supabase
+                        .from('movement_logs')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('student_id', studentIdentifier)
+                        .eq('movement_type', type)
+                        .gte('created_at', startOfMonth.toISOString());
                     
                     isLimitReachedCurrent = count !== null && count >= limitCount;
                     if (isLimitReachedCurrent) {
@@ -202,18 +165,21 @@ const ScanScreen = ({ studentData, onBack }) => {
             setStatus('requesting');
             setTimeLeft(25);
 
-            // Create pending session in Firestore
-            const newDocRef = await addDoc(scanLogsRef, {
-                student_id: studentData.student_id,
-                studentId: studentData.student_id, // duplicate for easier querying
-                studentName: studentData.full_name,
-                status: 'pending',
-                movement_type: type,
-                warning: warningText,
-                scannedAt: Timestamp.now()
-            });
+            // Create pending session in Supabase scan_sessions
+            const { data: newSession, error: createError } = await supabase
+                .from('scan_sessions')
+                .insert([{
+                    student_id: studentIdentifier,
+                    status: 'pending',
+                    movement_type: type,
+                    warning: warningText
+                }])
+                .select()
+                .single();
 
-            setSessionId(newDocRef.id);
+            if (createError) throw createError;
+
+            setSessionId(newSession.id);
             setSessionWarning(warningText);
 
         } catch (err) {
@@ -246,33 +212,33 @@ const ScanScreen = ({ studentData, onBack }) => {
                 scannedGateId = rawValue.split('_')[0].trim();
             }
 
-            if (!scannedGateId) throw new Error("Invalid Gate QR");
-
-            const collegeId = studentData.collegeId;
-
             // Fetch gate name
-            let gateName = 'Gate';
+            let gateName = 'Main Gate';
             try {
-                const gateDoc = await getDoc(doc(db, `colleges/${collegeId}/gates`, scannedGateId));
-                if (gateDoc.exists()) {
-                    gateName = gateDoc.data().name;
+                const { data: gateRow } = await supabase
+                    .from('guard_gates')
+                    .select('name')
+                    .or(`id.eq.${scannedGateId},name.ilike.%${scannedGateId}%`)
+                    .maybeSingle();
+
+                if (gateRow?.name) {
+                    gateName = gateRow.name;
                     setGateData({ name: gateName });
                 }
             } catch (e) {
-                console.error("Gate fetch error", e);
+                console.warn("Gate fetch error", e);
             }
 
             // Fetch Policies for Auto-Approval check
             let policies = null;
-            const settingsDoc = await getDoc(doc(db, `colleges/${collegeId}/settings/portal`));
-            if (settingsDoc.exists() && settingsDoc.data().student_policies) {
-                policies = settingsDoc.data().student_policies;
-            }
-            if (typeof policies === 'string') {
-                try {
-                    policies = JSON.parse(policies);
-                } catch (e) {
-                }
+            const { data: policyData } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'student_policies')
+                .maybeSingle();
+
+            if (policyData?.value) {
+                policies = typeof policyData.value === 'string' ? JSON.parse(policyData.value) : policyData.value;
             }
             const category = studentData.hostel_type === 'hosteler' ? 'hosteler' : 'dayscholar';
             
@@ -281,22 +247,33 @@ const ScanScreen = ({ studentData, onBack }) => {
                                      
             const newStatus = limitReachedRef.current ? 'rejected' : (isAutoApprovable ? 'completed' : 'approved');
 
-            // Update session in Firestore
-            await updateDoc(doc(db, `colleges/${collegeId}/scanLogs`, currentSessionId), {
-                status: newStatus,
-                gate_id: scannedGateId,
-                gateName: gateName,
-                scannedAt: Timestamp.now()
-            });
+            // Update session in Supabase scan_sessions
+            await supabase
+                .from('scan_sessions')
+                .update({
+                    status: newStatus,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', currentSessionId);
+
+            // Also record log in movement_logs
+            if (newStatus === 'completed') {
+                await supabase.from('movement_logs').insert([{
+                    user_name: studentData.full_name,
+                    student_id: studentData.student_id || studentData.id,
+                    movement_type: movementTypeRef.current,
+                    status: 'Success'
+                }]);
+            }
             
             if (limitReachedRef.current) {
                 setVerifiedAt(new Date().toISOString());
-                setStatus('completed'); // We use 'completed' UI state to trigger VerificationResult
+                setStatus('completed');
             } else if (isAutoApprovable) {
                 setVerifiedAt(new Date().toISOString());
                 setStatus('completed');
             } else {
-                setStatus('approved'); // Wait for guard
+                setStatus('approved'); // Wait for guard approval
             }
 
         } catch (err) {

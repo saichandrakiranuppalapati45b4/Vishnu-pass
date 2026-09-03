@@ -1,62 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import SplashScreen from './components/SplashScreen';
 import LoginScreen from './components/LoginScreen';
-import Dashboard from './components/admin/Dashboard';
+import Dashboard from './components/college/Dashboard';
 import StudentDashboard from './components/student/StudentDashboard';
 import GuardDashboard from './components/guard/GuardDashboard';
-import PlatformAdminDashboard from './components/platform/PlatformAdminDashboard';
-import SuperAdminAccessModal from './components/admin/SuperAdminAccessModal';
-import SuperAdminPortal from './components/admin/SuperAdminPortal';
 import { useAuth } from './contexts/AuthContext';
-import { auth, db } from './config/firebase';
-import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { supabase } from './config/supabase';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const { currentUser, userProfile, loading: authLoading } = useAuth();
-  
-  const [adminActivePage, setAdminActivePage] = useState('dashboard');
+
+  const [collegeActivePage, setCollegeActivePage] = useState('dashboard');
   const [branding, setBranding] = useState({
     portalLogo: null,
     loginBackground: null,
-    adminName: 'Admin User'
+    collegeName: 'Vishnu Institute'
   });
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
-  
-  // Super Admin States
-  const [showSuperAdminModal, setShowSuperAdminModal] = useState(false);
-  const [isSuperAdminAuthenticated, setIsSuperAdminAuthenticated] = useState(false);
 
+  // Load branding and portal settings from Supabase
   useEffect(() => {
-    // In Phase 5+, fetch from Firestore instead of Supabase
-    // For now, using default branding
-    setBranding({
-      portalLogo: null,
-      loginBackground: null,
-      adminName: 'Platform Admin'
-    });
-    setIsMaintenanceMode(false);
-  }, []);
+    const loadPortalSettings = async () => {
+      try {
+        const { data: settings } = await supabase
+          .from('portal_settings')
+          .select('*');
 
-  // Keyboard Shortcut for Super Admin: Ctrl + Shift + Space
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey) {
-        if (e.code === 'Space' || e.key === ' ' || e.keyCode === 32) {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          if (userProfile?.role === 'platform_admin' || userProfile?.role === 'college_admin') {
-            setShowSuperAdminModal(true);
-          }
+        if (settings) {
+          const brandObj = { ...branding };
+          settings.forEach(s => {
+            if (s.key === 'portalLogo') brandObj.portalLogo = s.value;
+            if (s.key === 'loginBackground') brandObj.loginBackground = s.value;
+            if (s.key === 'collegeName') brandObj.collegeName = s.value;
+            if (s.key === 'maintenance_mode') setIsMaintenanceMode(s.value === 'true' || s.value === true);
+          });
+          setBranding(prev => ({ ...prev, ...brandObj }));
         }
+      } catch (e) {
+        console.warn('Error loading portal settings:', e);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userProfile]);
+    loadPortalSettings();
+  }, []);
 
   const handleBrandingUpdate = (key, value) => {
     setBranding(prev => ({ ...prev, [key]: value }));
@@ -67,7 +55,7 @@ function App() {
   }, []);
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
   };
 
   const MaintenanceScreen = () => (
@@ -90,7 +78,7 @@ function App() {
   }
 
   // Maintenance Gate
-  if (isMaintenanceMode && userProfile?.role !== 'platform_admin') {
+  if (isMaintenanceMode) {
     return <MaintenanceScreen />;
   }
 
@@ -103,18 +91,26 @@ function App() {
           <div className="w-10 h-10 border-4 border-[#f47c20] border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : isLoggedIn ? (
-        userProfile.role === 'platform_admin' ? (
-          <PlatformAdminDashboard />
-        ) : userProfile.role === 'college_admin' ? (
-          <Dashboard 
-            onLogout={handleLogout} 
-            branding={branding} 
-            onBrandingUpdate={handleBrandingUpdate} 
-            adminData={userProfile} 
-            activePage={adminActivePage}
-            onNavigate={setAdminActivePage}
-          />
-        ) : userProfile.role === 'guard' ? (
+        (userProfile.role?.trim() === 'college_admin' || userProfile.role?.trim() === 'admin') ? (
+          <NotificationProvider>
+            <Dashboard
+              onLogout={handleLogout}
+              branding={{
+                ...branding,
+                collegeName: branding.collegeName || userProfile.name || 'Vishnu Institute',
+                portalLogo: branding.portalLogo || null
+              }}
+              onBrandingUpdate={handleBrandingUpdate}
+              collegeData={{
+                ...userProfile,
+                collegeId: 'vishnu-institute',
+                collegeName: branding.collegeName || 'Vishnu Institute'
+              }}
+              activePage={collegeActivePage || 'dashboard'}
+              onNavigate={setCollegeActivePage}
+            />
+          </NotificationProvider>
+        ) : userProfile.role?.trim() === 'guard' ? (
           <GuardDashboard onLogout={handleLogout} guardData={userProfile} />
         ) : (
           <StudentDashboard onLogout={handleLogout} studentData={userProfile} />
@@ -122,28 +118,8 @@ function App() {
       ) : (
         <LoginScreen branding={branding} />
       )}
-
-      {/* Super Admin Overlays */}
-      <SuperAdminAccessModal 
-        isOpen={showSuperAdminModal} 
-        onClose={() => setShowSuperAdminModal(false)}
-        onVerified={() => setIsSuperAdminAuthenticated(true)}
-      />
-
-      {isSuperAdminAuthenticated && (
-        <SuperAdminPortal 
-          onClose={() => setIsSuperAdminAuthenticated(false)} 
-          branding={branding}
-          onBrandingUpdate={handleBrandingUpdate}
-          adminData={userProfile}
-          onNavigate={(page) => {
-            setAdminActivePage(page);
-            setIsSuperAdminAuthenticated(false);
-          }}
-        />
-      )}
     </>
-  )
+  );
 }
 
 export default App;

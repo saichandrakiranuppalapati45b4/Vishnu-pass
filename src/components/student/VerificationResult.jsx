@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, CheckCircle2, ShieldCheck, Zap, Download, Scan, UserCircle, History, LayoutDashboard, User, AlertTriangle, X, Octagon, XCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { domToPng } from 'modern-screenshot';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import DailyDigitalPass from './DailyDigitalPass';
 
 const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, warning, status, hideNavBar = false }) => {

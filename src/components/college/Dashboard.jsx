@@ -5,7 +5,7 @@ import DashboardContent from './DashboardContent';
 import StudentManagement from './StudentManagement';
 import GuardManagement from './GuardManagement';
 import Reports from './Reports';
-import AdminManagement from './AdminManagement';
+import CollegeManagement from './CollegeManagement';
 import StudentProfile from './StudentProfile';
 import RegisterStudent from './RegisterStudent';
 import ChangePassword from './ChangePassword';
@@ -13,7 +13,7 @@ import Notifications from './Notifications';
 import SettingsPage from './SettingsPage';
 import FlowOptimization from './FlowOptimization';
 import AuditLogs from './AuditLogs';
-import AdminProfile from './AdminProfile';
+import CollegeProfile from './CollegeProfile';
 import Permissions from './Permissions';
 import StudentPermissions from './StudentPermissions';
 
@@ -22,7 +22,7 @@ const navItems = [
     { key: 'students', label: 'Student Management', icon: 'users' },
     { key: 'guards', label: 'Guard Management', icon: 'shield' },
     { key: 'reports', label: 'Reports', icon: 'bar-chart' },
-    { key: 'admin', label: 'Admin Management', icon: 'users' },
+    { key: 'college', label: 'College Management', icon: 'users' },
     { key: 'permissions', label: 'Permissions', icon: 'shield-check' },
     { key: 'student-permissions', label: 'Student Permission', icon: 'user-check' },
     { key: 'settings', label: 'Settings', icon: 'settings' },
@@ -52,16 +52,16 @@ const NavIcon = ({ type, className }) => {
     }
 };
 
-const Dashboard = ({ onLogout, branding, onBrandingUpdate, adminData, activePage, onNavigate }) => {
+const Dashboard = ({ onLogout, branding = {}, onBrandingUpdate = () => {}, collegeData = {}, activePage = 'dashboard', onNavigate = () => {} }) => {
     const [selectedStudentId, setSelectedStudentId] = useState(null);
-    const [selectedAdminId, setSelectedAdminId] = useState(null);
-    const [userEmail, setUserEmail] = useState('admin@vishnu.edu');
+    const [selectedCollegeId, setSelectedCollegeId] = useState(null);
+    const [userEmail, setUserEmail] = useState('college@vishnu.edu');
 
     useEffect(() => {
-        if (adminData && adminData.email) {
-            setUserEmail(adminData.email);
+        if (collegeData && collegeData.email) {
+            setUserEmail(collegeData.email);
         }
-    }, [adminData]);
+    }, [collegeData]);
 
     const handleBrandingUpdate = (key, value) => {
         onBrandingUpdate(key, value);
@@ -70,45 +70,45 @@ const Dashboard = ({ onLogout, branding, onBrandingUpdate, adminData, activePage
     const renderContent = () => {
         switch (activePage) {
             case 'students':
-                return <StudentManagement adminData={adminData} onNavigate={(page, id) => {
+                return <StudentManagement collegeData={collegeData} onNavigate={(page, id) => {
                     if (id) setSelectedStudentId(id);
                     onNavigate(page);
                 }} />;
             case 'guards':
-                return <GuardManagement adminData={adminData} />;
+                return <GuardManagement collegeData={collegeData} />;
             case 'reports':
-                return <Reports adminData={adminData} />;
-            case 'admin':
-                return <AdminManagement 
-                    currentAdmin={adminData}
+                return <Reports collegeData={collegeData} />;
+            case 'college':
+                return <CollegeManagement 
+                    currentCollege={collegeData}
                     onNavigate={(page, id) => {
-                        if (id) setSelectedAdminId(id);
+                        if (id) setSelectedCollegeId(id);
                         onNavigate(page);
                     }} 
                 />;
-            case 'admin-profile':
-                return <AdminProfile adminData={adminData} adminId={selectedAdminId} onBack={() => onNavigate('admin')} />;
+            case 'college-profile':
+                return <CollegeProfile collegeData={collegeData} collegeId={selectedCollegeId} onBack={() => onNavigate('college')} />;
             case 'permissions':
-                return <Permissions adminData={adminData} />;
+                return <Permissions collegeData={collegeData} />;
             case 'student-permissions':
-                return <StudentPermissions adminData={adminData} />;
+                return <StudentPermissions collegeData={collegeData} />;
             case 'settings':
-                return <SettingsPage adminData={adminData} onNavigate={onNavigate} branding={branding} onBrandingUpdate={handleBrandingUpdate} />;
+                return <SettingsPage collegeData={collegeData} onNavigate={onNavigate} branding={branding} onBrandingUpdate={handleBrandingUpdate} />;
             case 'register-student':
-                return <RegisterStudent adminData={adminData} onCancel={() => onNavigate('students')} />;
+                return <RegisterStudent collegeData={collegeData} onCancel={() => onNavigate('students')} />;
             case 'student-profile':
-                return <StudentProfile adminData={adminData} studentId={selectedStudentId} onBack={() => onNavigate('students')} />;
+                return <StudentProfile collegeData={collegeData} studentId={selectedStudentId} onBack={() => onNavigate('students')} />;
             case 'change-password':
-                return <ChangePassword adminData={adminData} onBack={() => onNavigate('settings')} />;
+                return <ChangePassword collegeData={collegeData} onBack={() => onNavigate('settings')} />;
             case 'audit-logs':
-                return <AuditLogs adminData={adminData} onBack={() => onNavigate('admin')} />;
+                return <AuditLogs collegeData={collegeData} onBack={() => onNavigate('college')} />;
             case 'notifications':
-                return <Notifications adminData={adminData} onBack={() => onNavigate('dashboard')} />;
+                return <Notifications collegeData={collegeData} onBack={() => onNavigate('dashboard')} />;
             case 'flow-optimization':
-                return <FlowOptimization adminData={adminData} onBack={() => onNavigate('dashboard')} />;
+                return <FlowOptimization collegeData={collegeData} onBack={() => onNavigate('dashboard')} />;
             case 'dashboard':
             default:
-                return <DashboardContent adminData={adminData} onNavigate={(page, id) => {
+                return <DashboardContent collegeData={collegeData} onNavigate={(page, id) => {
                     if (id) setSelectedStudentId(id);
                     onNavigate(page);
                 }} />;
@@ -135,7 +135,7 @@ const Dashboard = ({ onLogout, branding, onBrandingUpdate, adminData, activePage
                     </div>
                     <div>
                         <h2 className="font-bold text-[15px] text-gray-900 leading-tight">Vishnu Pass</h2>
-                        <p className="text-[11px] text-gray-400 font-medium">Admin Portal</p>
+                        <p className="text-[11px] text-gray-400 font-medium">College Portal</p>
                     </div>
                 </div>
 
@@ -165,7 +165,7 @@ const Dashboard = ({ onLogout, branding, onBrandingUpdate, adminData, activePage
                             </div>
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{branding.adminName || 'Admin User'}</p>
+                            <p className="text-sm font-semibold text-gray-900 truncate">{branding.collegeName || 'College User'}</p>
                             <p className="text-[11px] text-gray-400 font-medium truncate">{userEmail}</p>
                         </div>
                         <button onClick={onLogout} title="Logout" className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
@@ -189,7 +189,7 @@ const Dashboard = ({ onLogout, branding, onBrandingUpdate, adminData, activePage
                     </div>
                     <div className="flex items-center gap-3 ml-6">
                         <button
-                            onClick={() => setActivePage('notifications')}
+                            onClick={() => onNavigate('notifications')}
                             className={`p-2.5 rounded-xl transition-all duration-300 relative ${activePage === 'notifications'
                                 ? 'text-[#f47c20] bg-[#fff4eb] shadow-sm'
                                 : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'

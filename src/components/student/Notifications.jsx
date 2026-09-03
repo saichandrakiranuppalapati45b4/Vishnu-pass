@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, ChevronLeft, CheckCircle2, AlertTriangle, Info, Clock, Trash2 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -10,28 +9,45 @@ const Notifications = ({ studentData, onBack }) => {
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!studentData?.id || !studentData?.collegeId) return;
+    const fetchNotifications = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('notifications')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        const notifRef = collection(db, `colleges/${studentData.collegeId}/students/${studentData.id}/notifications`);
-        const qNotif = query(notifRef, orderBy('created_at', 'desc'));
-
-        const unsubscribe = onSnapshot(qNotif, (snapshot) => {
-            const notifsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setNotifications(notifsData);
-            setLoading(false);
-        }, (error) => {
+            if (!error && data) {
+                setNotifications(data);
+            }
+        } catch (error) {
             console.error("Error fetching notifications", error);
+        } finally {
             setLoading(false);
-        });
+        }
+    };
 
-        return () => unsubscribe();
-    }, [studentData]);
+    useEffect(() => {
+        fetchNotifications();
+
+        const channel = supabase
+            .channel('student-notifications-page')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+                fetchNotifications();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     const markAsRead = async (id) => {
         try {
-            const notifRef = doc(db, `colleges/${studentData.collegeId}/students/${studentData.id}/notifications`, id);
-            await updateDoc(notifRef, { is_read: true });
+            await supabase
+                .from('notifications')
+                .update({ is_read: true })
+                .eq('id', id);
+            setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
         } catch (error) {
             console.error("Failed to mark notification as read", error);
         }
@@ -39,8 +55,11 @@ const Notifications = ({ studentData, onBack }) => {
 
     const deleteNotification = async (id) => {
         try {
-            const notifRef = doc(db, `colleges/${studentData.collegeId}/students/${studentData.id}/notifications`, id);
-            await deleteDoc(notifRef);
+            await supabase
+                .from('notifications')
+                .delete()
+                .eq('id', id);
+            setNotifications(prev => prev.filter(n => n.id !== id));
         } catch (error) {
             console.error("Failed to delete notification", error);
         }

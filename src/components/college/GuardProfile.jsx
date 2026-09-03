@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, Mail, Phone, MapPin, Clock, Calendar, Shield, CreditCard, Droplets } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { db } from '../../config/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import VerificationResult from '../student/VerificationResult';
 
 // Helper function to generate a consistent color from a name
@@ -19,79 +18,60 @@ const stringToColor = (name) => {
     return color;
 };
 
-const GuardProfile = ({ adminData, guard, onBack, onEdit }) => {
+const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedLog, setSelectedLog] = useState(null);
     const [loadingStudentData, setLoadingStudentData] = useState(false);
 
     const handleLogClick = async (log) => {
-        if (log.movementType === 'GUEST ACCESS' || !log.studentId) {
-            setSelectedLog({ ...log, studentData: { full_name: log.studentName || 'Guest', hostel_type: 'Guest' } });
+        if (!log.student_id && !log.studentId) {
+            setSelectedLog({ ...log, studentData: { full_name: log.user_name || log.studentName || 'Guest', hostel_type: 'Guest' } });
             return;
         }
 
         setLoadingStudentData(true);
         setSelectedLog({ ...log, studentData: null });
         try {
-            const studentQ = query(
-                collection(db, `colleges/${adminData.collegeId}/students`),
-                where('student_id', '==', log.studentId)
-            );
-            const studentSnap = await getDocs(studentQ);
-            
-            if (!studentSnap.empty) {
-                const sDoc = studentSnap.docs[0];
-                const studentData = { id: sDoc.id, ...sDoc.data() };
-                
-                // Fetch department
-                if (studentData.department_id) {
-                    const deptDoc = await getDoc(doc(db, `colleges/${adminData.collegeId}/departments`, studentData.department_id));
-                    if (deptDoc.exists()) {
-                        studentData.departments = { name: deptDoc.data().name };
-                    }
-                }
-                
+            const sId = log.student_id || log.studentId;
+            const { data: studentData } = await supabase
+                .from('students')
+                .select('*, departments(name)')
+                .or(`id.eq.${sId},student_id.eq.${sId}`)
+                .maybeSingle();
+
+            if (studentData) {
                 setSelectedLog({ ...log, studentData });
             } else {
                 throw new Error('Student not found');
             }
         } catch (error) {
             console.error(error);
-            setSelectedLog({ ...log, studentData: { full_name: log.studentName || 'Student' } });
+            setSelectedLog({ ...log, studentData: { full_name: log.user_name || log.studentName || 'Student' } });
         } finally {
             setLoadingStudentData(false);
         }
     };
 
     useEffect(() => {
-        if (!adminData?.collegeId || !guard?.id) {
-            setLoading(false);
-            return;
-        }
+        const fetchActivity = async () => {
+            try {
+                const { data } = await supabase
+                    .from('movement_logs')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(5);
 
-        const logsRef = collection(db, `colleges/${adminData.collegeId}/scanLogs`);
-        const q = query(
-            logsRef,
-            where('guardUid', '==', guard.uid),
-            orderBy('scannedAt', 'desc'),
-            limit(5)
-        );
+                if (data) setRecentActivity(data);
+            } catch (err) {
+                console.error("Error fetching guard activity:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const logsData = [];
-            snapshot.forEach((doc) => {
-                logsData.push({ id: doc.id, ...doc.data() });
-            });
-            setRecentActivity(logsData);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching guard activity:", error);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [adminData?.collegeId, guard?.id, guard?.uid]);
+        fetchActivity();
+    }, [guard]);
 
     if (!guard) return null;
 

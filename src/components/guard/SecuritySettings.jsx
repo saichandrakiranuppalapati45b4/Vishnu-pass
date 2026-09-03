@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Key, Lock, Shield, Eye, EyeOff, Loader2, CheckCircle2, RotateCcw, Info } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { db, auth } from '../../config/firebase';
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { supabase } from '../../config/supabase';
 
 const SecuritySettings = ({ onBack }) => {
     const { t } = useLanguage();
@@ -25,32 +24,24 @@ const SecuritySettings = ({ onBack }) => {
         setError(null);
         setSuccess(false);
 
-        if (!passwords.current) {
-            setError('Please enter your current password.');
-            return;
-        }
-
         if (passwords.new !== passwords.confirm) {
-            setError(t('guard.security.matchError'));
+            setError(t('guard.security.matchError') || 'Passwords do not match');
             return;
         }
 
-        if (passwords.new.length < 12) {
-            setError('Password must be at least 12 characters.');
+        if (passwords.new.length < 8) {
+            setError('Password must be at least 8 characters.');
             return;
         }
 
         setIsSubmitting(true);
 
         try {
-            // Verify current password by re-authenticating
-            const user = auth.currentUser;
-            if (!user) throw new Error('No active session found.');
+            const { error: updateErr } = await supabase.auth.updateUser({
+                password: passwords.new
+            });
 
-            const credential = EmailAuthProvider.credential(user.email, passwords.current);
-            await reauthenticateWithCredential(user, credential);
-
-            await updatePassword(user, passwords.new);
+            if (updateErr) throw updateErr;
 
             setSuccess(true);
             setPasswords({ current: '', new: '', confirm: '' });

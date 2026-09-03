@@ -1,28 +1,26 @@
 import React, { useState } from 'react';
-import { db } from '../../config/firebase';
-import { doc, updateDoc, collection, addDoc, setDoc } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { Loader2, AlertTriangle, ShieldCheck, ChevronDown, X } from 'lucide-react';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
-const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
-    const isEdit = !!admin;
+const AddCollegeModal = ({ college = null, onClose, onUpdate, collegeData }) => {
+    const isEdit = !!college;
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
-    const roles = ["Super Admin", "Manager", "Editor"];
+    const roles = ["Super College", "Manager", "Editor"];
     const [formData, setFormData] = useState({
-        fullName: admin?.name || '',
-        email: admin?.email || '',
-        role: admin?.role || '',
+        fullName: college?.name || '',
+        email: college?.email || '',
+        role: college?.role || '',
         password: '',
         confirmPassword: '',
-        permissions: admin?.permissions || {
+        permissions: college?.permissions || {
             manageStudents: false,
             approvePasses: false,
             securityGuards: false,
             auditLogs: false,
-            deleteAdmins: false,
+            deleteColleges: false,
         }
     });
 
@@ -39,7 +37,6 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
     const handleSave = async (e) => {
         e.preventDefault();
         setError(null);
-        if (!adminData?.collegeId) return;
 
         if (!isEdit && formData.password !== formData.confirmPassword) {
             setError("Passwords do not match");
@@ -51,60 +48,60 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
         try {
             if (isEdit) {
                 // 1. Update existing admin record
-                const adminRef = doc(db, `colleges/${adminData.collegeId}/admins`, admin.id);
-                await updateDoc(adminRef, {
-                    name: formData.fullName,
-                    role: formData.role,
-                    permissions: formData.permissions
-                });
-
-                // 2. Log the action
-                await logAuditAction({
-                    action: 'Updated Admin',
-                    resource: formData.email,
-                    details: {
+                const { error: updateErr } = await supabase
+                    .from('admins')
+                    .update({
                         name: formData.fullName,
                         role: formData.role,
                         permissions: formData.permissions
-                    },
-                    collegeId: adminData.collegeId
-                });
-            } else {
-                const functions = getFunctions();
-                const createCollegeAdminAccount = httpsCallable(functions, 'createCollegeAdminAccount');
-                
-                const response = await createCollegeAdminAccount({
-                    email: formData.email,
-                    password: formData.password,
-                    adminData: {
+                    })
+                    .eq('id', college.id);
+
+                if (updateErr) throw updateErr;
+
+                // 2. Log the action
+                await logAuditAction({
+                    action: 'Updated College Admin',
+                    resource: formData.email,
+                    details: {
                         name: formData.fullName,
                         role: formData.role,
                         permissions: formData.permissions
                     }
                 });
-                
-                if (!response.data.success) {
-                    throw new Error(response.data.message || 'Failed to create admin account');
-                }
+            } else {
+                // Insert into admins
+                const { data, error: insertErr } = await supabase
+                    .from('admins')
+                    .insert([{
+                        email: formData.email,
+                        name: formData.fullName,
+                        role: formData.role || 'Manager',
+                        status: 'Active',
+                        permissions: formData.permissions
+                    }])
+                    .select()
+                    .single();
 
-                // 3. Log the action
+                if (insertErr) throw insertErr;
+
+                // Log the action
                 await logAuditAction({
-                    action: 'Invited Admin',
+                    action: 'Added College Admin',
                     resource: formData.email,
                     details: {
                         name: formData.fullName,
                         role: formData.role,
                         permissions: formData.permissions
-                    },
-                    collegeId: adminData.collegeId
+                    }
                 });
             }
 
-            if (onUpdate) onUpdate();
+            onUpdate();
             onClose();
         } catch (err) {
-            console.error(err);
-            setError(err.message || "Failed to save admin account");
+            console.error("Error saving admin:", err);
+            setError(err.message || 'Failed to save admin user');
         } finally {
             setIsSubmitting(false);
         }
@@ -116,9 +113,9 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
                     <div>
-                        <h2 className="text-2xl font-black text-gray-900 leading-tight">{isEdit ? 'Edit Administrator' : 'Add New Admin'}</h2>
+                        <h2 className="text-2xl font-black text-gray-900 leading-tight">{isEdit ? 'Edit Collegeistrator' : 'Add New College'}</h2>
                         <p className="text-sm text-gray-500 font-medium">
-                            {isEdit ? `Update role and accessibility for ${admin.name}` : 'Configure access and credentials for a new system administrator.'}
+                            {isEdit ? `Update role and accessibility for ${college.name}` : 'Configure access and credentials for a new system collegeistrator.'}
                         </p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-50 rounded-xl transition-colors text-gray-400 cursor-pointer">
@@ -151,7 +148,7 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
                                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Email Address</label>
                                 <input
                                     type="email"
-                                    placeholder="rahul.s@vishnupass.com"
+                                    placeholder="rahul.s@gatepass.com"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     disabled={isEdit}
@@ -175,7 +172,7 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
                                         }`}
                                 >
                                     <span className={`text-sm font-black ${formData.role ? 'text-gray-900' : 'text-gray-400'}`}>
-                                        {formData.role || 'Select an admin role'}
+                                        {formData.role || 'Select an college role'}
                                     </span>
                                     <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                                 </div>
@@ -215,7 +212,7 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
                                     { id: 'approvePasses', label: 'Approve Passes', desc: 'Grant or deny exit/entry requests' },
                                     { id: 'securityGuards', label: 'Security Guards', desc: 'Manage guard shifts and assignments' },
                                     { id: 'auditLogs', label: 'Audit Logs', desc: 'Access and export system activity reports' },
-                                    { id: 'deleteAdmins', label: 'Delete Other Admins', desc: 'Permanently remove administrator accounts' }
+                                    { id: 'deleteColleges', label: 'Delete Other Colleges', desc: 'Permanently remove collegeistrator accounts' }
                                 ].map((p) => (
                                     <label key={p.id} className={`flex items-start gap-4 p-5 rounded-2xl border transition-all cursor-pointer ${formData.permissions[p.id] ? 'bg-orange-50/50 border-[#f47c20]/20 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-200'}`}>
                                         <div className="flex items-center h-5 mt-0.5">
@@ -288,7 +285,7 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
                                         {isEdit ? 'Updating...' : 'Creating...'}
                                     </>
                                 ) : (
-                                    isEdit ? 'Update Administrator' : 'Create Admin Account'
+                                    isEdit ? 'Update Collegeistrator' : 'Create College Account'
                                 )}
                             </button>
                         </div>
@@ -299,4 +296,4 @@ const AddAdminModal = ({ admin = null, onClose, onUpdate, adminData }) => {
     );
 };
 
-export default AddAdminModal;
+export default AddCollegeModal;

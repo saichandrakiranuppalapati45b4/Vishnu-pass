@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Bell, TrendingUp, Clock, ShieldCheck, User, QrCode, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { format } from 'date-fns';
-import { db } from '../../config/firebase';
-import { collection, doc, getDoc, updateDoc, onSnapshot, query, where, orderBy, limit, getCountFromServer, Timestamp } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import VerificationResult from '../student/VerificationResult';
 
 const GuardHome = ({ guardData }) => {
@@ -12,16 +11,16 @@ const GuardHome = ({ guardData }) => {
     const [activities, setActivities] = useState([]);
     const [pendingRequests, setPendingRequests] = useState([]);
     const [activeVerification, setActiveVerification] = useState(null);
-    const [qrToken, setQrToken] = useState(crypto.randomUUID());
+    const [qrToken, setQrToken] = useState(crypto.randomUUID ? crypto.randomUUID() : `qr_${Date.now()}`);
     const [qrTimeLeft, setQrTimeLeft] = useState(25);
-    const [connectionStatus, setConnectionStatus] = useState('connecting'); // connecting, safe, error
+    const [connectionStatus, setConnectionStatus] = useState('safe');
 
     // QR Code Refresh Timer
     useEffect(() => {
         const timer = setInterval(() => {
             setQrTimeLeft((prev) => {
                 if (prev <= 1) {
-                    setQrToken(crypto.randomUUID());
+                    setQrToken(crypto.randomUUID ? crypto.randomUUID() : `qr_${Date.now()}`);
                     return 25;
                 }
                 return prev - 1;
@@ -31,103 +30,85 @@ const GuardHome = ({ guardData }) => {
         return () => clearInterval(timer);
     }, []);
 
-    const fetchStats = async () => {
-        if (!guardData?.collegeId) return;
+    const fetchStatsAndRequests = async () => {
         try {
-            const scanLogsRef = collection(db, `colleges/${guardData.collegeId}/scanLogs`);
-            
-            // 1. Total Scans
-            const countSnapshot = await getCountFromServer(scanLogsRef);
-            const totalScans = countSnapshot.data().count;
+            // 1. Total Scans & Activities
+            const { data: logs, count } = await supabase
+                .from('movement_logs')
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .limit(10);
 
-            // 2. Active Passes Today
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            
-            const qToday = query(
-                scanLogsRef,
-                where('scannedAt', '>=', Timestamp.fromDate(todayStart)),
-                where('status', 'in', ['success', 'completed', 'approved', 'Authorized'])
-            );
-            
-            // This requires an index or fetching all docs and counting unique
-            // For now, we will fetch docs and count unique studentIds using onSnapshot or getDocs
-            // Since it might be large, a better approach is to keep a running count, but we will fetch for now
-            // To prevent large reads, just use total scans today as a proxy if it fails, but let's try onSnapshot
-        } catch(e) {
-            console.error(e);
+            if (logs) {
+                setActivities(logs);
+                setStats(prev => ({ ...prev, totalScans: count || logs.length }));
+            }
+
+            // 2. Pending Requests
+            const { data: requests } = await supabase
+                .from('scan_sessions')
+                .select('*')
+                .in('status', ['pending', 'approved'])
+                .order('created_at', { ascending: false });
+
+            if (requests) {
+                setPendingRequests(requests);
+            }
+            setConnectionStatus('safe');
+        } catch (e) {
+            console.error('Error fetching guard data:', e);
+            setConnectionStatus('error');
         }
     };
 
     // Real-time data fetching and subscriptions
     useEffect(() => {
-        if (!guardData?.gate_id || !guardData?.collegeId) return;
+        fetchStatsAndRequests();
 
-        const scanLogsRef = collection(db, `colleges/${guardData.collegeId}/scanLogs`);
-        
-        // Query for Pending/Approved requests for this gate
-        const qPending = query(
-            scanLogsRef,
-            where('gateId', '==', guardData.gate_id),
-            where('status', 'in', ['pending', 'approved']),
-            orderBy('scannedAt', 'desc')
-        );
-
-        const unsubscribePending = onSnapshot(qPending, (snapshot) => {
-            const requests = [];
-            snapshot.forEach(doc => {
-                requests.push({ id: doc.id, ...doc.data() });
-            });
-            setPendingRequests(requests);
-            setConnectionStatus('safe');
-        }, (error) => {
-            console.error("Error fetching pending requests:", error);
-            setConnectionStatus('error');
-        });
-
-        // Query for Recent Activity
-        const qRecent = query(
-            scanLogsRef,
-            where('gateId', '==', guardData.gate_id),
-            orderBy('scannedAt', 'desc'),
-            limit(10)
-        );
-
-        const unsubscribeRecent = onSnapshot(qRecent, (snapshot) => {
-            const acts = [];
-            snapshot.forEach(doc => {
-                acts.push({ id: doc.id, ...doc.data() });
-            });
-            setActivities(acts);
-            setStats(prev => ({ ...prev, totalScans: prev.totalScans + acts.length })); // simplified stat
-        });
+        const channel = supabase
+            .channel('guard-home-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
+                fetchStatsAndRequests();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchStatsAndRequests();
+            })
+            .subscribe();
 
         return () => {
-            unsubscribePending();
-            unsubscribeRecent();
+            supabase.removeChannel(channel);
         };
-    }, [guardData?.gate_id, guardData?.collegeId]);
+    }, [guardData]);
 
     const handleRefresh = async () => {
-        // Force re-fetch stats if needed
         setConnectionStatus('connecting');
-        setTimeout(() => setConnectionStatus('safe'), 500);
+        await fetchStatsAndRequests();
     };
 
     const handleApprove = async (sessionId) => {
         try {
-            if (!guardData?.collegeId) return;
-            const logRef = doc(db, `colleges/${guardData.collegeId}/scanLogs`, sessionId);
-            
-            await updateDoc(logRef, {
-                status: 'completed',
-                guardUid: guardData.uid,
-                guardName: guardData.full_name,
-                scannedAt: Timestamp.now()
-            });
+            // Update session status in Supabase
+            const { data: updated } = await supabase
+                .from('scan_sessions')
+                .update({
+                    status: 'completed',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', sessionId)
+                .select()
+                .single();
 
-            // We could show verification result here if we want, but usually it just approves
-            // and removes from pending
+            // Insert into movement_logs
+            if (updated) {
+                await supabase.from('movement_logs').insert([{
+                    user_name: updated.student_id,
+                    student_id: updated.student_id,
+                    movement_type: updated.movement_type || 'IN',
+                    status: 'Success'
+                }]);
+            }
+
+            setPendingRequests(prev => prev.filter(r => r.id !== sessionId));
         } catch (err) {
             console.error("Approval failed", err);
         }
@@ -198,7 +179,7 @@ const GuardHome = ({ guardData }) => {
                         <div className="aspect-square bg-[#fff8f6] rounded-[60px] flex items-center justify-center p-1 relative border border-[#f47c20]/5">
                             <div className="w-full h-full bg-white rounded-[40px] shadow-lg flex flex-col items-center justify-center gap-4 transition-transform group-hover:scale-105 active:scale-95 border-2 border-[#f47c20]/10 shadow-[#f47c20]/5 p-2">
                                 <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=https://vishnupass.com/gate/${guardData?.gate_id}_${qrToken}`}
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=https://gatepass.com/gate/${guardData?.gate_id}_${qrToken}`}
                                     alt="Gate QR"
                                     className="w-full h-full object-contain"
                                 />

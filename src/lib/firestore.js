@@ -1,96 +1,57 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, serverTimestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
 // ---------------------------
-// USERS
+// Supabase Database Wrapper
 // ---------------------------
+
 export const createUserProfile = async (uid, data) => {
-  const userRef = doc(db, 'users', uid);
-  await setDoc(userRef, {
-    ...data,
-    uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+  const { data: result, error } = await supabase
+    .from('admins')
+    .upsert([{ id: uid, ...data }], { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return result;
 };
 
 export const getUserProfile = async (uid) => {
-  const docRef = doc(db, 'users', uid);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) return { ...docSnap.data(), id: docSnap.id };
-  return null;
+  const { data, error } = await supabase
+    .from('admins')
+    .select('*')
+    .eq('id', uid)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
 };
 
-// ---------------------------
-// COLLEGES
-// ---------------------------
-export const createCollege = async (collegeId, data) => {
-  const collegeRef = doc(db, 'colleges', collegeId);
-  await setDoc(collegeRef, {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+export const getStudents = async () => {
+  const { data, error } = await supabase
+    .from('students')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
 };
 
-export const getCollege = async (collegeId) => {
-  const docRef = doc(db, 'colleges', collegeId);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) return { ...docSnap.data(), id: docSnap.id };
-  return null;
+export const getGuards = async () => {
+  const { data, error } = await supabase
+    .from('guards')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
 };
 
-export const getColleges = async () => {
-  const querySnapshot = await getDocs(collection(db, 'colleges'));
-  return querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-};
+export const getScanLogs = async () => {
+  const { data, error } = await supabase
+    .from('movement_logs')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-// ---------------------------
-// STUDENTS
-// ---------------------------
-export const createStudent = async (collegeId, studentId, data) => {
-  const studentRef = doc(db, `colleges/${collegeId}/students`, studentId);
-  await setDoc(studentRef, {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-};
-
-export const getStudentsByCollege = async (collegeId) => {
-  const querySnapshot = await getDocs(collection(db, `colleges/${collegeId}/students`));
-  return querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-};
-
-// ---------------------------
-// GUARDS
-// ---------------------------
-export const createGuard = async (collegeId, guardId, data) => {
-  const guardRef = doc(db, `colleges/${collegeId}/guards`, guardId);
-  await setDoc(guardRef, {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-};
-
-export const getGuardsByCollege = async (collegeId) => {
-  const querySnapshot = await getDocs(collection(db, `colleges/${collegeId}/guards`));
-  return querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-};
-
-// ---------------------------
-// SCAN LOGS
-// ---------------------------
-export const createScanLog = async (collegeId, logId, data) => {
-  const logRef = doc(db, `colleges/${collegeId}/scanLogs`, logId);
-  await setDoc(logRef, {
-    ...data,
-    scannedAt: serverTimestamp()
-  });
-};
-
-export const getScanLogsByCollege = async (collegeId) => {
-  const querySnapshot = await getDocs(collection(db, `colleges/${collegeId}/scanLogs`));
-  return querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  if (error) throw error;
+  return data || [];
 };

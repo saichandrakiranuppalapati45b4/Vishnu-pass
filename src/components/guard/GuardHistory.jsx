@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Clock, User, ShieldCheck, ShieldAlert, MoreHorizontal, Loader2, ChevronLeft, CheckCircle2, XCircle, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { db } from '../../config/firebase';
-import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { format, isToday, isYesterday } from 'date-fns';
 
 const GuardHistory = ({ guardData, onBack }) => {
@@ -12,52 +11,57 @@ const GuardHistory = ({ guardData, onBack }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('ALL'); // ALL, SUCCESS, DENIED
 
-    useEffect(() => {
-        if (!guardData?.gate_id || !guardData?.collegeId) {
-            setIsLoading(false);
-            return;
-        }
+    const fetchHistory = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('movement_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
 
-        const q = query(
-            collection(db, `colleges/${guardData.collegeId}/scanLogs`),
-            where('gateId', '==', guardData.gate_id),
-            orderBy('scannedAt', 'desc'),
-            limit(100)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = [];
-            snapshot.forEach(docSnap => {
-                data.push({ id: docSnap.id, ...docSnap.data() });
-            });
-            setLogs(data);
-            setIsLoading(false);
-        }, (error) => {
+            if (!error && data) {
+                setLogs(data);
+            }
+        } catch (error) {
             console.error("Error fetching history", error);
+        } finally {
             setIsLoading(false);
-        });
+        }
+    };
 
-        return () => unsubscribe();
-    }, [guardData?.gate_id, guardData?.collegeId]);
+    useEffect(() => {
+        fetchHistory();
+
+        const channel = supabase
+            .channel('guard-history-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchHistory();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     const filteredLogs = logs.filter(log => {
         const queryStr = searchQuery.toLowerCase();
         const matchesSearch =
-            log.studentName?.toLowerCase().includes(queryStr) ||
-            log.studentId?.toLowerCase().includes(queryStr) ||
-            log.gateName?.toLowerCase().includes(queryStr);
+            (log.user_name || '').toLowerCase().includes(queryStr) ||
+            (log.student_id || '').toLowerCase().includes(queryStr);
 
+        const statusLower = (log.status || '').toLowerCase();
         const matchesFilter =
             activeFilter === 'ALL' ||
-            (activeFilter === 'SUCCESS' && (log.status === 'completed' || log.status === 'approved' || log.status === 'success')) ||
-            (activeFilter === 'DENIED' && (log.status === 'denied' || log.status === 'rejected' || log.status === 'expired' || log.status === 'error'));
+            (activeFilter === 'SUCCESS' && (statusLower === 'completed' || statusLower === 'approved' || statusLower === 'success')) ||
+            (activeFilter === 'DENIED' && (statusLower === 'denied' || statusLower === 'rejected' || statusLower === 'expired' || statusLower === 'error'));
 
         return matchesSearch && matchesFilter;
     });
 
     // Grouping logic
     const groupedLogs = filteredLogs.reduce((acc, log) => {
-        const date = log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date();
+        const date = log.created_at ? new Date(log.created_at) : (log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date());
         let title = format(date, 'MMM dd, yyyy').toUpperCase();
 
         if (isToday(date)) title = `TODAY, ${format(date, 'MMM dd').toUpperCase()}`;

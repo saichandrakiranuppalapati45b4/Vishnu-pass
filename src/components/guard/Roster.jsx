@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Search, SlidersHorizontal, CheckCircle2, Scan, Clock, User, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { db } from '../../config/firebase';
-import { collection, doc, updateDoc, onSnapshot, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { formatDistanceToNow } from 'date-fns';
 
 const GuardRoster = ({ guardData, onScannerOpen, onBack }) => {
@@ -12,45 +11,61 @@ const GuardRoster = ({ guardData, onScannerOpen, onBack }) => {
     const [expectedStudents, setExpectedStudents] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!guardData?.gate_id || !guardData?.collegeId) {
-            setLoading(false);
-            return;
-        }
+    const fetchRoster = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('scan_sessions')
+                .select('*')
+                .in('status', ['pending', 'approved'])
+                .order('created_at', { ascending: false });
 
-        const q = query(
-            collection(db, `colleges/${guardData.collegeId}/scanLogs`),
-            where('gateId', '==', guardData.gate_id),
-            where('status', 'in', ['pending', 'approved']),
-            orderBy('scannedAt', 'desc')
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = [];
-            snapshot.forEach(docSnap => {
-                data.push({ id: docSnap.id, ...docSnap.data() });
-            });
-            setExpectedStudents(data);
-            setLoading(false);
-        }, (error) => {
+            if (!error && data) {
+                setExpectedStudents(data);
+            }
+        } catch (error) {
             console.error("Error fetching roster live data", error);
+        } finally {
             setLoading(false);
-        });
+        }
+    };
 
-        return () => unsubscribe();
-    }, [guardData?.gate_id, guardData?.collegeId]);
+    useEffect(() => {
+        fetchRoster();
+
+        const channel = supabase
+            .channel('guard-roster-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
+                fetchRoster();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     const handleApprove = async (sessionId) => {
         try {
-            if (!guardData?.collegeId) return;
-            const logRef = doc(db, `colleges/${guardData.collegeId}/scanLogs`, sessionId);
-            
-            await updateDoc(logRef, {
-                status: 'completed',
-                guardUid: guardData.uid,
-                guardName: guardData.full_name,
-                scannedAt: Timestamp.now()
-            });
+            const { data: updated } = await supabase
+                .from('scan_sessions')
+                .update({
+                    status: 'completed',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', sessionId)
+                .select()
+                .single();
+
+            if (updated) {
+                await supabase.from('movement_logs').insert([{
+                    user_name: updated.student_id,
+                    student_id: updated.student_id,
+                    movement_type: updated.movement_type || 'IN',
+                    status: 'Success'
+                }]);
+            }
+
+            setExpectedStudents(prev => prev.filter(s => s.id !== sessionId));
         } catch (err) {
             console.error("Approval failed", err);
         }

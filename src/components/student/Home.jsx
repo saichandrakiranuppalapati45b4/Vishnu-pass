@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, User, ArrowRight, LogIn, LogOut, CheckCircle2, MapPin, Clock, Zap, RefreshCw } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, getCountFromServer } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -12,45 +11,62 @@ const Home = ({ studentData, onNotificationClick }) => {
     const { t } = useLanguage();
 
     useEffect(() => {
-        if (!studentData?.student_id || !studentData?.collegeId) return;
+        if (!studentData?.student_id && !studentData?.id) return;
 
         // Fetch unread notifications count
-        const notifRef = collection(db, `colleges/${studentData.collegeId}/students/${studentData.id}/notifications`);
-        const qNotif = query(notifRef, where('is_read', '==', false));
-        
-        const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
-            setUnreadCount(snapshot.docs.length);
-        });
+        const fetchNotificationsCount = async () => {
+            try {
+                const { count } = await supabase
+                    .from('notifications')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('is_read', false);
+                setUnreadCount(count || 0);
+            } catch (err) {
+                console.error('Error fetching notif count:', err);
+            }
+        };
 
-        // Fetch recent scan logs
-        const logsRef = collection(db, `colleges/${studentData.collegeId}/scanLogs`);
-        const qLogs = query(
-            logsRef, 
-            where('studentId', '==', studentData.student_id),
-            where('status', '!=', 'pending'),
-            orderBy('status'), // Firestore requires ordering by the inequality field first
-            orderBy('scannedAt', 'desc'),
-            limit(4)
-        );
+        // Fetch recent movement logs
+        const fetchLogs = async () => {
+            try {
+                const queryBuilder = supabase
+                    .from('movement_logs')
+                    .select('*');
 
-        const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
-            const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Note: Since we order by status first due to firestore limitations, we re-sort locally
-            logsData.sort((a, b) => {
-                const timeA = a.scannedAt?.toMillis ? a.scannedAt.toMillis() : 0;
-                const timeB = b.scannedAt?.toMillis ? b.scannedAt.toMillis() : 0;
-                return timeB - timeA;
-            });
-            setLogs(logsData);
-            setLoadingLogs(false);
-        }, (error) => {
-            console.error("Error fetching logs: ", error);
-            setLoadingLogs(false);
-        });
+                if (studentData.student_id) {
+                    queryBuilder.eq('student_id', studentData.student_id);
+                }
+
+                const { data, error } = await queryBuilder
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (!error && data) {
+                    setLogs(data);
+                }
+            } catch (err) {
+                console.error("Error fetching logs: ", err);
+            } finally {
+                setLoadingLogs(false);
+            }
+        };
+
+        fetchNotificationsCount();
+        fetchLogs();
+
+        // Subscribe to realtime updates for movement_logs
+        const channel = supabase
+            .channel(`student-home-${studentData.student_id || studentData.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchLogs();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+                fetchNotificationsCount();
+            })
+            .subscribe();
 
         return () => {
-            unsubscribeNotif();
-            unsubscribeLogs();
+            supabase.removeChannel(channel);
         };
     }, [studentData]);
 

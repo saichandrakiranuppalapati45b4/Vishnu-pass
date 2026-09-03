@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UserCheck, Save, RotateCcw, AlertCircle } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 
-const StudentPermissions = ({ adminData }) => {
+const StudentPermissions = ({ collegeData }) => {
     const [saving, setSaving] = useState(false);
     const { showNotification } = useNotification();
     
@@ -38,11 +37,9 @@ const StudentPermissions = ({ adminData }) => {
     };
 
     const handleSave = async () => {
-        if (!adminData?.collegeId) return;
         try {
             setSaving(true);
             
-            // Explicitly construct the value object to ensure clean data
             const policiesToSave = {
                 dayscholar: {
                     autoApproveOutpass: settings.dayscholar.autoApproveOutpass,
@@ -60,8 +57,9 @@ const StudentPermissions = ({ adminData }) => {
                 }
             };
 
-            const settingsRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'student_policies');
-            await setDoc(settingsRef, policiesToSave, { merge: true });
+            await supabase
+                .from('portal_settings')
+                .upsert([{ key: 'student_policies', value: JSON.stringify(policiesToSave) }], { onConflict: 'key' });
 
             showNotification('Student policies updated successfully.', 'success');
         } catch (err) {
@@ -73,16 +71,16 @@ const StudentPermissions = ({ adminData }) => {
 
     // Fetch policies
     const fetchData = useCallback(async () => {
-        if (!adminData?.collegeId) return;
         try {
-            // 1. Fetch Policies
-            const settingsRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'student_policies');
-            const docSnap = await getDoc(settingsRef);
+            const { data } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'student_policies')
+                .maybeSingle();
             
-            if (docSnap.exists()) {
-                const val = docSnap.data();
+            if (data?.value) {
+                const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
                 if (val && typeof val === 'object') {
-                    // Robust normalization: support old plural keys and merge with defaults
                     setSettings({
                         dayscholar: {
                             ...initialSettings.dayscholar,
@@ -96,17 +94,13 @@ const StudentPermissions = ({ adminData }) => {
                 }
             }
         } catch (err) {
-            // Don't show error notification on mount, just use defaults
             console.error("Error fetching policies:", err);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [adminData]);
+    }, []);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-
 
     return (
         <div className="flex-1 overflow-y-auto p-8 bg-[#f8f9fb]">

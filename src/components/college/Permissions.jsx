@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Lock, CheckCircle2, AlertCircle, Save, RotateCcw, ShieldCheck, Users, FileText, Bell } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 
-const Permissions = ({ adminData }) => {
+const Permissions = ({ collegeData }) => {
     const [saving, setSaving] = useState(false);
     
     const roles = [
-        { id: 'super_admin', name: 'Super Admin', color: '#f47c20' },
-        { id: 'admin', name: 'Administrator', color: '#1a2b3c' },
+        { id: 'super_college', name: 'Super College', color: '#f47c20' },
+        { id: 'college', name: 'Administrator', color: '#1a2b3c' },
         { id: 'editor', name: 'Editor', color: '#64748b' }
     ];
 
     const [permissionMatrix, setPermissionMatrix] = useState({
-        manage_students: { super_admin: true, admin: true, editor: true },
-        approve_passes: { super_admin: true, admin: true, editor: false },
-        guard_management: { super_admin: true, admin: false, editor: false },
-        audit_logs: { super_admin: true, admin: false, editor: false },
-        system_settings: { super_admin: true, admin: false, editor: false },
-        reports_view: { super_admin: true, admin: true, editor: true }
+        manage_students: { super_college: true, college: true, editor: true },
+        approve_passes: { super_college: true, college: true, editor: false },
+        guard_management: { super_college: true, college: false, editor: false },
+        audit_logs: { super_college: true, college: false, editor: false },
+        system_settings: { super_college: true, college: false, editor: false },
+        reports_view: { super_college: true, college: true, editor: true }
     });
 
     const permissionLabels = {
@@ -30,24 +29,29 @@ const Permissions = ({ adminData }) => {
         reports_view: { label: 'Reports & Analytics', description: 'Access detailed movement and activity reports', icon: Bell }
     };
 
-    useEffect(() => {
-        const fetchPermissions = async () => {
-            if (!adminData?.collegeId) return;
-            try {
-                const docRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'permissions');
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists() && docSnap.data().matrix) {
-                    setPermissionMatrix(docSnap.data().matrix);
-                }
-            } catch (err) {
-                console.error("Error fetching permissions:", err);
+    const fetchPermissions = async () => {
+        try {
+            const { data } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'role_permissions')
+                .maybeSingle();
+
+            if (data?.value) {
+                const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+                setPermissionMatrix(parsed);
             }
-        };
+        } catch (err) {
+            console.error("Error fetching permissions:", err);
+        }
+    };
+
+    useEffect(() => {
         fetchPermissions();
-    }, [adminData?.collegeId]);
+    }, []);
 
     const handleToggle = (perm, role) => {
-        if (role === 'super_admin') return; // Super admin permissions are locked
+        if (role === 'super_college') return;
         setPermissionMatrix(prev => ({
             ...prev,
             [perm]: {
@@ -58,11 +62,11 @@ const Permissions = ({ adminData }) => {
     };
 
     const handleSave = async () => {
-        if (!adminData?.collegeId) return;
         setSaving(true);
         try {
-            const docRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'permissions');
-            await setDoc(docRef, { matrix: permissionMatrix }, { merge: true });
+            await supabase
+                .from('portal_settings')
+                .upsert([{ key: 'role_permissions', value: JSON.stringify(permissionMatrix) }], { onConflict: 'key' });
         } catch (_err) {
             console.error("Failed to save permissions:", _err);
         } finally {
@@ -70,19 +74,7 @@ const Permissions = ({ adminData }) => {
         }
     };
 
-    const handleReset = async () => {
-        const fetchPermissions = async () => {
-            if (!adminData?.collegeId) return;
-            try {
-                const docRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'permissions');
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists() && docSnap.data().matrix) {
-                    setPermissionMatrix(docSnap.data().matrix);
-                }
-            } catch (err) {
-                console.error("Error resetting permissions:", err);
-            }
-        };
+    const handleReset = () => {
         fetchPermissions();
     };
 
@@ -92,7 +84,7 @@ const Permissions = ({ adminData }) => {
             <div className="mb-8 flex items-center justify-between">
                 <div>
                     <h1 className="text-[26px] font-bold text-gray-900 mb-1 italic">Role Permissions</h1>
-                    <p className="text-sm text-gray-500 font-medium text-left">Configure granular access levels for different administrative roles.</p>
+                    <p className="text-sm text-gray-500 font-medium text-left">Configure granular access levels for different collegeistrative roles.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button 
@@ -158,12 +150,12 @@ const Permissions = ({ adminData }) => {
                                             <td key={`${permKey}-${role.id}`} className="py-6 px-4 text-center">
                                                 <button
                                                     onClick={() => handleToggle(permKey, role.id)}
-                                                    disabled={role.id === 'super_admin'}
+                                                    disabled={role.id === 'super_college'}
                                                     className={`w-10 h-10 rounded-2xl flex items-center justify-center mx-auto transition-all cursor-pointer ${
                                                         rolePerms[role.id] 
                                                         ? 'bg-emerald-50 text-emerald-600 shadow-sm scale-110' 
                                                         : 'bg-gray-50 text-gray-300'
-                                                    } ${role.id !== 'super_admin' && 'hover:scale-105 active:scale-95'}`}
+                                                    } ${role.id !== 'super_college' && 'hover:scale-105 active:scale-95'}`}
                                                 >
                                                     {rolePerms[role.id] ? (
                                                         <ShieldCheck className="w-5 h-5 shadow-emerald-500/20" />
@@ -189,7 +181,7 @@ const Permissions = ({ adminData }) => {
                 <div>
                     <h4 className="text-sm font-black text-blue-900 uppercase tracking-tight mb-1">Security Enforcement Notice</h4>
                     <p className="text-[11px] text-blue-700 font-medium leading-relaxed">
-                        Changes to role-based permissions will take effect immediately. Administrators associated with these roles will experience updated access levels across the portal including restricted modules and authorized data views.
+                        Changes to role-based permissions will take effect immediately. Collegeistrators associated with these roles will experience updated access levels across the portal including restricted modules and authorized data views.
                     </p>
                 </div>
             </div>

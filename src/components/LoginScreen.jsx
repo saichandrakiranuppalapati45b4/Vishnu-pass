@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { HelpCircle, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
 const LoginScreen = ({ branding }) => {
     const [showPassword, setShowPassword] = useState(false);
@@ -16,6 +15,11 @@ const LoginScreen = ({ branding }) => {
         e.preventDefault();
         setError('');
 
+        if (!email.trim() || !password) {
+            setError('Please enter your email/ID and password.');
+            return;
+        }
+
         // Rate limiting check
         if (lockedUntil && Date.now() < lockedUntil) {
             const secondsLeft = Math.ceil((lockedUntil - Date.now()) / 1000);
@@ -26,17 +30,49 @@ const LoginScreen = ({ branding }) => {
         setLoading(true);
 
         try {
-            // Sign in with Firebase Auth
-            await signInWithEmailAndPassword(auth, email.trim(), password);
+            let loginEmail = email.trim();
+
+            // If user entered a student_id or employee_id instead of an email (does not contain @)
+            if (!loginEmail.includes('@')) {
+                // Try student_id
+                const { data: studentMatch } = await supabase
+                    .from('students')
+                    .select('email')
+                    .ilike('student_id', loginEmail)
+                    .maybeSingle();
+
+                if (studentMatch?.email) {
+                    loginEmail = studentMatch.email;
+                } else {
+                    // Try employee_id
+                    const { data: guardMatch } = await supabase
+                        .from('guards')
+                        .select('email')
+                        .ilike('employee_id', loginEmail)
+                        .maybeSingle();
+
+                    if (guardMatch?.email) {
+                        loginEmail = guardMatch.email;
+                    }
+                }
+            }
+
+            // Sign in with Supabase Auth
+            const { error: authError } = await supabase.auth.signInWithPassword({
+                email: loginEmail,
+                password: password
+            });
+
+            if (authError) {
+                throw authError;
+            }
 
             // Reset failed attempts on successful login
             setFailedAttempts(0);
             setLockedUntil(null);
-            
-            // App.jsx will automatically react to auth state changes 
-            // through the AuthContext.
 
         } catch (err) {
+            console.error('Login error:', err);
             const newAttempts = failedAttempts + 1;
             setFailedAttempts(newAttempts);
             if (newAttempts >= 5) {
@@ -44,7 +80,7 @@ const LoginScreen = ({ branding }) => {
                 setFailedAttempts(0);
                 setError('Too many failed attempts. Account locked for 30 seconds.');
             } else {
-                setError('Invalid email or password.');
+                setError(err.message || 'Invalid email/ID or password.');
             }
         } finally {
             setLoading(false);
@@ -54,7 +90,7 @@ const LoginScreen = ({ branding }) => {
     return (
         <div className="min-h-screen bg-[#f9fafb] flex flex-col font-sans">
             {/* Header */}
-            <header className="flex justify-between items-center p-4 bg-[#f9fafb]">
+            <header className="flex justify-between items-center px-4 py-3 bg-[#f9fafb]">
                 <div className="flex items-center gap-2">
                     {/* Portal Logo */}
                     <div className="bg-[#fef3c7] w-10 h-10 rounded-lg flex items-center justify-center border border-orange-100 overflow-hidden">
@@ -76,24 +112,10 @@ const LoginScreen = ({ branding }) => {
             </header>
 
             {/* Main Container */}
-            <div className="flex-1 px-4 pb-8 flex justify-center">
-                <div className="w-full max-w-sm bg-white rounded-3xl shadow-sm overflow-hidden flex flex-col border border-gray-100 relative mt-2">
-                    {/* Hero Image / Background Area */}
-                    <div className="h-44 bg-gradient-to-t from-gray-100 to-gray-200 relative overflow-hidden">
-                        {branding?.loginBackground ? (
-                            <img src={branding.loginBackground} alt="Login Background" className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="absolute inset-0 opacity-10 flex flex-col justify-end items-center pointer-events-none">
-                                <div className="w-3/4 h-24 border-t-8 border-l-8 border-r-8 border-gray-400 relative">
-                                    <div className="absolute top-4 left-4 right-4 bottom-0 border-t-2 border-gray-400"></div>
-                                </div>
-                            </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent"></div>
-                    </div>
-
-                    {/* Avatar Icon Overlap */}
-                    <div className="absolute top-36 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+            <div className="flex-1 px-4 pb-2 flex justify-center items-center">
+                <div className="w-full max-w-sm bg-white rounded-3xl shadow-sm overflow-hidden flex flex-col border border-gray-100 relative">
+                    {/* Avatar Icon */}
+                    <div className="flex justify-center mt-8">
                         <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
                             <div className="w-16 h-16 bg-brand-orange rounded-full flex items-center justify-center">
                                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -104,13 +126,13 @@ const LoginScreen = ({ branding }) => {
                         </div>
                     </div>
 
-                    <div className="px-6 pt-12 pb-6 flex-1 flex flex-col">
-                        <div className="text-center mb-8">
+                    <div className="px-6 pt-6 pb-2 flex-1 flex flex-col">
+                        <div className="text-center mb-5">
                             <h2 className="text-[28px] font-bold text-gray-900 tracking-tight mb-2">Welcome Back</h2>
                             <p className="text-[#64748b] text-[15px]">Access your Digital Identity Portal</p>
                         </div>
 
-                        <form className="flex flex-col gap-5 text-sm" onSubmit={handleSubmit}>
+                        <form className="flex flex-col gap-4 text-sm" onSubmit={handleSubmit}>
                             {error && (
                                 <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-lg text-xs font-semibold text-center">
                                     {error}
@@ -133,7 +155,7 @@ const LoginScreen = ({ branding }) => {
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         placeholder="Enter your email or ID"
-                                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange placeholder:text-gray-400 text-gray-900 transition-all font-medium"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange placeholder:text-gray-400 text-gray-900 transition-all font-medium"
                                     />
                                 </div>
                             </div>
@@ -155,7 +177,7 @@ const LoginScreen = ({ branding }) => {
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="••••••••"
-                                        className="w-full pl-10 pr-10 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange placeholder:text-gray-400 text-gray-900 transition-all font-medium tracking-widest text-lg"
+                                        className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange placeholder:text-gray-400 text-gray-900 transition-all font-medium tracking-widest text-lg"
                                     />
                                     <button
                                         type="button"
@@ -179,7 +201,7 @@ const LoginScreen = ({ branding }) => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className={`w-full mt-2 bg-brand-orange hover:bg-[#e06d1c] text-white font-semibold py-3.5 rounded-xl shadow-[0_4px_14px_rgba(244,124,32,0.4)] transition-colors flex items-center justify-center gap-2 text-[15px] ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                className={`w-full mt-1 bg-brand-orange hover:bg-[#e06d1c] text-white font-semibold py-3 rounded-xl shadow-[0_4px_14px_rgba(244,124,32,0.4)] transition-colors flex items-center justify-center gap-2 text-[15px] ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                             >
                                 {loading ? 'Signing In...' : 'Sign In'}
                                 {!loading && (
@@ -191,7 +213,7 @@ const LoginScreen = ({ branding }) => {
                             </button>
                         </form>
 
-                        <div className="flex justify-center gap-4 mt-8 pb-2">
+                        <div className="flex justify-center gap-4 mt-5 pb-2">
                             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-purple/5 border border-brand-purple/10">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9C2A8C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -220,9 +242,8 @@ const LoginScreen = ({ branding }) => {
                 </div>
             </div>
 
-            <footer className="text-center pb-6 text-xs text-brand-blue/60 mt-auto px-4 text-[#8a9ab0]">
-                <p className="mb-1 font-medium">© 2024 Vishnu Institute. All Rights Reserved.</p>
-                <p className="font-medium">Powered by Vishnu Pass Digital Identity Systems</p>
+            <footer className="text-center pb-3 text-xs text-brand-blue/60 mt-auto px-4 text-[#8a9ab0]">
+                <p className="font-medium flex items-center justify-center gap-1">made with ❤️ from team blackpeak</p>
             </footer>
         </div>
     );

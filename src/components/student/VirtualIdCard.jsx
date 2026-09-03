@@ -1,8 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { domToPng } from 'modern-screenshot';
 import { Download, Loader2, ShieldCheck } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { generateQrToken } from '../../lib/functions';
 
 const VirtualIdCard = ({ studentData }) => {
@@ -228,7 +226,7 @@ const VirtualIdCard = ({ studentData }) => {
 
                             <div>
                                 <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">CONTACT</p>
-                                <p className="text-[12px] sm:text-[14px] font-[900] text-[#1a2b3c] truncate">{studentData?.contact_number || 'N/A'}</p>
+                                <p className="text-[12px] sm:text-[14px] font-[900] text-[#1a2b3c] truncate">{studentData?.contact_number || studentData?.contactNumber || 'N/A'}</p>
                                 <p className="text-[8px] sm:text-[9px] font-medium text-slate-400 italic">Official Record</p>
                             </div>
 

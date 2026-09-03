@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { db } from '../../config/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { ChevronLeft, LogIn, LogOut, Save, Loader2, X, ShieldCheck } from 'lucide-react';
 import VerificationResult from './VerificationResult';
@@ -12,35 +11,46 @@ const EntryLogs = ({ studentData }) => {
     const [selectedLog, setSelectedLog] = useState(null);
 
     useEffect(() => {
-        if (!studentData?.student_id || !studentData?.collegeId) return;
+        if (!studentData?.student_id && !studentData?.id) return;
         
         setLoading(true);
-        const logsRef = collection(db, `colleges/${studentData.collegeId}/scanLogs`);
-        const qLogs = query(
-            logsRef, 
-            where('studentId', '==', studentData.student_id),
-            where('status', '!=', 'pending'),
-            orderBy('status'), 
-            orderBy('scannedAt', 'desc'),
-            limit(50)
-        );
 
-        const unsubscribe = onSnapshot(qLogs, (snapshot) => {
-            const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Re-sort locally because of firestore's inequality ordering requirement
-            logsData.sort((a, b) => {
-                const timeA = a.scannedAt?.toMillis ? a.scannedAt.toMillis() : 0;
-                const timeB = b.scannedAt?.toMillis ? b.scannedAt.toMillis() : 0;
-                return timeB - timeA;
-            });
-            setLogs(logsData);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching entry logs:", error);
-            setLoading(false);
-        });
+        const fetchLogs = async () => {
+            try {
+                const queryBuilder = supabase
+                    .from('movement_logs')
+                    .select('*');
 
-        return () => unsubscribe();
+                if (studentData.student_id) {
+                    queryBuilder.eq('student_id', studentData.student_id);
+                }
+
+                const { data, error } = await queryBuilder
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                if (!error && data) {
+                    setLogs(data);
+                }
+            } catch (err) {
+                console.error("Error fetching entry logs:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchLogs();
+
+        const channel = supabase
+            .channel(`student-entrylogs-${studentData.student_id || studentData.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchLogs();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [studentData]);
 
     // Determine if a log is entry or exit based on movement_type
@@ -115,7 +125,7 @@ const EntryLogs = ({ studentData }) => {
                                 const statusColor = (statusRaw === 'completed' || statusRaw === 'approved' || statusRaw === 'success') ? 'text-emerald-500' : 
                                                (statusRaw === 'pending') ? 'text-amber-500' : 'text-rose-500';
                                 
-                                const logDate = log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date();
+                                const logDate = log.created_at ? new Date(log.created_at) : (log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date());
                                 const isValidDate = logDate && !isNaN(logDate.getTime());
                                 
                                 return (

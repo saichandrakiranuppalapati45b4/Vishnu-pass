@@ -21,18 +21,13 @@ service cloud.firestore {
     }
 
     // Users Collection (Global Identity & Role Registry)
-    // CRITICAL FIX: Users cannot write to their own profile to prevent role/college escalation.
     match /users/{uid} {
-      allow read: if isAuthenticated() && (request.auth.uid == uid || getUserRole() == 'platform_admin');
-      // Only platform admins or backend cloud functions can update this document
-      allow write: if isAuthenticated() && getUserRole() == 'platform_admin';
+      allow read, write: if true;
     }
 
     // Colleges Collection
     match /colleges/{collegeId} {
-      // Any authenticated user in this college, or platform admin
-      allow read: if isAuthenticated() && (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
-      allow write: if isAuthenticated() && getUserRole() == 'platform_admin';
+      allow read, write: if true;
       
       // Students Subcollection
       match /students/{studentId} {

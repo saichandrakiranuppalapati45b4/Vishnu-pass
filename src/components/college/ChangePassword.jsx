@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Eye, EyeOff, CheckCircle2, Circle, AlertCircle, ArrowLeft, Lock, Loader2, X } from 'lucide-react';
-import { db, auth } from '../../config/firebase';
-import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { supabase } from '../../config/supabase';
 
 const ChangePassword = ({ onBack }) => {
     const [showCurrent, setShowCurrent] = useState(false);
@@ -10,33 +8,11 @@ const ChangePassword = ({ onBack }) => {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [lastChanged, setLastChanged] = useState(null);
     const [error, setError] = useState(null);
     const [isShake, setIsShake] = useState(false);
     const [success, setSuccess] = useState(null);
-
-    useEffect(() => {
-        const fetchCurrentPassword = async () => {
-            try {
-                const user = auth.currentUser;
-                if (user) {
-                    // Fetch user info from Firestore (assuming user info is in top level 'users' collection)
-                    const userDocRef = doc(db, 'users', user.uid);
-                    const userDoc = await getDoc(userDocRef);
-
-                    if (userDoc.exists()) {
-                        setLastChanged(userDoc.data().passwordChangedAt?.toDate() || null);
-                    }
-                }
-            } catch (err) {
-                console.error("Error fetching user data:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchCurrentPassword();
-    }, []);
 
     const triggerShake = () => {
         setIsShake(true);
@@ -58,9 +34,6 @@ const ChangePassword = ({ onBack }) => {
 
         try {
             setLoading(true);
-            const user = auth.currentUser;
-
-            if (!user) throw new Error('No active session found.');
 
             // 1. Validation: Check if all requirements are met
             const allMet = requirements.every(req => req.met);
@@ -77,26 +50,14 @@ const ChangePassword = ({ onBack }) => {
                 return;
             }
 
-            // 3. Reauthenticate user
-            const credential = EmailAuthProvider.credential(user.email, currentPassword.trim());
-            try {
-                await reauthenticateWithCredential(user, credential);
-            } catch (authError) {
-                setError('The current password you entered is incorrect. Please try again.');
-                triggerShake();
-                return;
-            }
-
-            // 4. Update Firebase Auth password
-            await updatePassword(user, newPassword.trim());
-
-            // 5. Update the 'users' document
-            const now = new Date();
-            const userDocRef = doc(db, 'users', user.uid);
-            await updateDoc(userDocRef, {
-                passwordChangedAt: now
+            // 3. Update Supabase Auth password
+            const { error: updateErr } = await supabase.auth.updateUser({
+                password: newPassword.trim()
             });
 
+            if (updateErr) throw updateErr;
+
+            const now = new Date();
             setLastChanged(now);
             setCurrentPassword('');
             setNewPassword('');
@@ -324,7 +285,7 @@ const ChangePassword = ({ onBack }) => {
                             <h3 className="font-bold text-[#f47c20] text-[14px]">Need Help?</h3>
                         </div>
                         <p className="text-[13px] text-[#a86532] font-medium leading-[1.6]">
-                            If you're having trouble changing your password, please contact the IT support desk or refer to the administrative security manual.
+                            If you're having trouble changing your password, please contact the IT support desk or refer to the collegeistrative security manual.
                         </p>
                     </div>
                 </div>

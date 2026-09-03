@@ -1,14 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, GraduationCap, Camera, ChevronDown, Loader2, Lock, ChevronLeft, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText } from 'lucide-react';
-import { db, storage } from '../../config/firebase';
-import { collection, getDocs, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { createStudentAccount } from '../../lib/functions';
+import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
 import Papa from 'papaparse';
 
-// Custom Dropdown Component
 const CustomSelect = ({ label, value, options, placeholder = 'Select', onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef(null);
@@ -78,7 +74,7 @@ const hostelOptions = [
     { value: 'hosteler', label: 'Hosteler' },
 ];
 
-const RegisterStudent = ({ adminData, onCancel }) => {
+const RegisterStudent = ({ collegeData, onCancel }) => {
     const [registrationMode, setRegistrationMode] = useState('single'); // 'single' | 'bulk'
     const [departments, setDepartments] = useState([]);
     const [batches, setBatches] = useState([]);
@@ -113,36 +109,32 @@ const RegisterStudent = ({ adminData, onCancel }) => {
     const [uploadLogs, setUploadLogs] = useState([]);
     const csvInputRef = useRef(null);
 
-    // Fetch live departments and batches from Firestore
+    // Fetch live departments and batches from Supabase
     useEffect(() => {
-        if (!adminData?.collegeId) return;
-
         const loadData = async () => {
             setLoading(true);
             try {
-                const deptQuery = query(collection(db, `colleges/${adminData.collegeId}/departments`), orderBy('name'));
-                const deptSnap = await getDocs(deptQuery);
-                const depts = [];
-                deptSnap.forEach(d => depts.push({ value: d.id, label: d.data().name }));
-                setDepartments(depts);
+                const { data: depts } = await supabase.from('departments').select('*').order('name');
+                if (depts) {
+                    setDepartments(depts.map(d => ({ value: d.id, label: d.name })));
+                }
 
-                const batchQuery = query(collection(db, `colleges/${adminData.collegeId}/batches`), orderBy('name'));
-                const batchSnap = await getDocs(batchQuery);
-                const bs = [];
-                batchSnap.forEach(b => bs.push({ value: b.id, label: b.data().name }));
-                setBatches(bs);
-                
-                if (bs.length > 0) {
-                    setFormData(prev => ({ ...prev, batch: bs[0].label })); // Setting by name not ID, based on previous implementation
+                const { data: bs } = await supabase.from('batches').select('*').order('name');
+                if (bs) {
+                    setBatches(bs.map(b => ({ value: b.id, label: b.name })));
+                    if (bs.length > 0) {
+                        setFormData(prev => ({ ...prev, batch: prev.batch || bs[0].name }));
+                    }
                 }
             } catch (err) {
-                console.error("Error loading form data:", err);
+                console.warn('Error loading departments/batches:', err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         loadData();
-    }, [adminData]);
+    }, []);
 
     // Single Change Handlers
     const handleChange = (field, value) => {
@@ -162,14 +154,46 @@ const RegisterStudent = ({ adminData, onCancel }) => {
                 return;
             }
             setPhotoFile(file);
-            setPhotoPreview(URL.createObjectURL(file));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPhotoPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
         }
+    };
+
+    const registerStudentPayload = async (payload) => {
+        const studentDocId = (payload.studentId ? payload.studentId.trim() : 'student_' + Date.now());
+
+        const studentDocData = {
+            full_name: (payload.fullName || '').trim(),
+            student_id: (payload.studentId || '').trim(),
+            email: (payload.email || '').trim(),
+            contact_number: payload.contactNumber || '',
+            photo_url: payload.photoUrl || '',
+            department_id: payload.departmentId || null,
+            year_of_study: payload.yearOfStudy || '1',
+            hostel_type: payload.hostelType || 'Dayscholar',
+            batch: payload.batch || '2024',
+            status: 'Active'
+        };
+
+        const { data, error: insertErr } = await supabase
+            .from('students')
+            .upsert([studentDocData], { onConflict: 'student_id' })
+            .select()
+            .single();
+
+        if (insertErr) {
+            throw insertErr;
+        }
+
+        return { data: { success: true, id: data?.id || studentDocId } };
     };
 
     // Single Submit
     const handleSingleSubmit = async (e) => {
         e.preventDefault();
-        if (!adminData?.collegeId) return;
         
         setError(null);
         setIsSubmitting(true);
@@ -185,15 +209,17 @@ const RegisterStudent = ({ adminData, onCancel }) => {
             let photoUrl = null;
 
             if (photoFile) {
-                const fileExt = photoFile.name.split('.').pop();
-                const fileName = `student_${Date.now()}.${fileExt}`;
-                const storageRef = ref(storage, `colleges/${adminData.collegeId}/students/${fileName}`);
-                await uploadBytes(storageRef, photoFile);
-                photoUrl = await getDownloadURL(storageRef);
+                try {
+                    const studentDocId = formData.studentId.trim() || 'student_' + Date.now();
+                    const fileExt = photoFile.name.split('.').pop();
+                    const fileName = `${studentDocId}_${Date.now()}.${fileExt}`;
+                    photoUrl = await uploadFile('students', fileName, photoFile);
+                } catch (imgErr) {
+                    console.error('Photo upload failed:', imgErr);
+                }
             }
 
-            // Call Cloud Function to create auth user and insert into Firestore securely
-            const result = await createStudentAccount({
+            await registerStudentPayload({
                 email: formData.email.trim(),
                 password: formData.password,
                 fullName: formData.fullName.trim(),
@@ -206,10 +232,6 @@ const RegisterStudent = ({ adminData, onCancel }) => {
                 contactNumber: formData.contactNumber,
                 photoUrl: photoUrl
             });
-
-            if (result.data.error) {
-                throw new Error(result.data.error);
-            }
 
             await logAuditAction({
                 action: 'Registered Student',
@@ -224,6 +246,7 @@ const RegisterStudent = ({ adminData, onCancel }) => {
             showNotification('Student registered successfully!', 'success');
             onCancel();
         } catch (err) {
+            console.error('Registration error:', err);
             setError(err.message || 'Failed to register student. Please try again.');
         } finally {
             setIsSubmitting(false);
@@ -280,7 +303,7 @@ const RegisterStudent = ({ adminData, onCancel }) => {
     };
 
     const handleBulkSubmit = async () => {
-        if (parsedData.length === 0 || !adminData?.collegeId) return;
+        if (parsedData.length === 0) return;
         setIsSubmitting(true);
         setError(null);
         setUploadLogs([]);
@@ -301,23 +324,22 @@ const RegisterStudent = ({ adminData, onCancel }) => {
                     if (deptMatch) deptId = deptMatch.value;
                 }
 
-                const result = await createStudentAccount({
-                    email: row.email.trim(),
-                    password: row.password || 'changeme123',
-                    fullName: row.fullName.trim(),
-                    studentId: row.studentId.trim(),
-                    gender: row.gender?.toLowerCase() || 'other',
+                const studentGender = row.gender || row.Gender || row['gender'] || row['Gender'] || 'male';
+                const studentContact = row.contactNumber || row.contact_number || row.contact || row.phone || row['Contact Number'] || row['Phone'] || row['contact'] || '';
+
+                await registerStudentPayload({
+                    email: (row.email || row.Email || '').trim(),
+                    password: row.password || row.Password || 'changeme123',
+                    fullName: (row.fullName || row.full_name || row.name || row.Name || '').trim(),
+                    studentId: (row.studentId || row.student_id || row.rollNumber || row['Student ID'] || '').trim(),
+                    gender: studentGender.toLowerCase(),
                     departmentId: deptId,
-                    yearOfStudy: row.yearOfStudy || '1',
-                    hostelType: row.hostel?.toLowerCase() || 'dayscholar',
+                    yearOfStudy: row.yearOfStudy || row.year || '1',
+                    hostelType: (row.hostel || row.hostel_type || 'dayscholar').toLowerCase(),
                     batch: row.batch || '2024',
-                    contactNumber: row.contactNumber || '',
+                    contactNumber: studentContact,
                     photoUrl: null
                 });
-
-                if (result.data.error) {
-                    throw new Error(result.data.error);
-                }
                 
                 successCount++;
                 setUploadLogs(prev => [...prev, { status: 'success', message: `${row.fullName} (${row.studentId}) registered.` }]);

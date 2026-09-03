@@ -4,8 +4,7 @@ import {
     Calendar, Shield, Clock, ArrowUpRight, Loader2,
     CalendarDays, Hash, BadgeCheck, Building
 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, getDocs, doc, getDoc, query, where, orderBy, limit } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const StatusBadge = ({ status }) => {
@@ -22,7 +21,6 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-// eslint-disable-next-line no-unused-vars
 const InfoCard = ({ icon: HeroIcon, label, value }) => (
     <div className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-gray-50 shadow-sm">
         <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
@@ -35,58 +33,52 @@ const InfoCard = ({ icon: HeroIcon, label, value }) => (
     </div>
 );
 
-const StudentProfile = ({ adminData, studentId, onBack }) => {
+const StudentProfile = ({ collegeData, studentId, onBack }) => {
     const [student, setStudent] = useState(null);
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (studentId && adminData?.collegeId) fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [studentId, adminData]);
+        if (studentId) fetchData();
+    }, [studentId]);
 
     const fetchData = async () => {
         try {
             setLoading(true);
 
-            // 1. Fetch Student Details
-            const studentRef = doc(db, `colleges/${adminData.collegeId}/students`, studentId);
-            const studentSnap = await getDoc(studentRef);
+            // Fetch student from Supabase
+            const { data: studentRow, error } = await supabase
+                .from('students')
+                .select('*, departments(name)')
+                .or(`id.eq.${studentId},student_id.eq.${studentId}`)
+                .maybeSingle();
 
-            if (!studentSnap.exists()) throw new Error('Student not found');
-            
-            const studentData = { id: studentSnap.id, ...studentSnap.data() };
-            
-            // Resolve Department Name
-            if (studentData.department_id) {
-                const deptRef = doc(db, `colleges/${adminData.collegeId}/departments`, studentData.department_id);
-                const deptSnap = await getDoc(deptRef);
-                if (deptSnap.exists()) {
-                    studentData.departments = { name: deptSnap.data().name };
+            if (studentRow) {
+                const sData = {
+                    ...studentRow,
+                    name: studentRow.full_name,
+                    rollNumber: studentRow.student_id,
+                    department: studentRow.departments?.name || studentRow.department_id || 'General',
+                    year: studentRow.year_of_study,
+                    hostel: studentRow.hostel_type
+                };
+                setStudent(sData);
+
+                // Fetch movement logs for this student
+                const sIdentifier = studentRow.student_id || studentRow.id;
+                const { data: movementLogs } = await supabase
+                    .from('movement_logs')
+                    .select('*')
+                    .eq('student_id', sIdentifier)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                if (movementLogs) {
+                    setLogs(movementLogs);
                 }
             }
-            
-            setStudent(studentData);
-
-            // 2. Fetch Movement Logs
-            const logsRef = collection(db, `colleges/${adminData.collegeId}/scanLogs`);
-            const q = query(
-                logsRef,
-                where('studentId', '==', studentData.student_id),
-                orderBy('scannedAt', 'desc'),
-                limit(10)
-            );
-            
-            const logsSnap = await getDocs(q);
-            const logsData = [];
-            logsSnap.forEach(doc => {
-                logsData.push({ id: doc.id, ...doc.data() });
-            });
-            
-            setLogs(logsData);
-
-        } catch (error) {
-            console.error("Error fetching profile:", error);
+        } catch (err) {
+            console.error('Error fetching student profile:', err);
         } finally {
             setLoading(false);
         }
@@ -110,9 +102,46 @@ const StudentProfile = ({ adminData, studentId, onBack }) => {
         );
     }
 
-    const initials = student.full_name
-        ? student.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    const studentName = student.full_name || student.name || 'Student';
+    const sIdDisplay = student.student_id || student.rollNumber || student.studentId || 'N/A';
+    const initials = studentName
+        ? studentName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
         : 'ST';
+
+    // Helper display formatters
+    const formatJoinDate = () => {
+        const val = student.created_at || student.createdAt;
+        if (!val) return 'N/A';
+        try {
+            if (val?.toDate) return format(val.toDate(), 'MMM yyyy');
+            const d = new Date(val);
+            if (!isNaN(d.getTime())) return format(d, 'MMM yyyy');
+        } catch (e) {}
+        return 'N/A';
+    };
+
+    const formatGender = () => {
+        const g = student.gender;
+        if (!g || g === 'Not specified') return 'N/A';
+        return g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
+    };
+
+    const formatHostel = () => {
+        const h = student.hostel_type || student.hostel;
+        if (!h) return 'Dayscholar';
+        const lower = h.toLowerCase();
+        if (lower === 'dayscholar' || lower === 'day scholar') return 'Dayscholar';
+        if (lower === 'hosteler' || lower === 'hosteller') return 'Hosteler';
+        return h;
+    };
+
+    const formatBatch = () => {
+        const b = student.batch;
+        if (!b) return 'Batch 2024';
+        if (b.startsWith('batch_')) return 'Batch 2028';
+        if (b.startsWith('Batch ')) return b;
+        return `Batch ${b}`;
+    };
 
     return (
         <div className="flex-1 overflow-y-auto p-8 bg-[#f8f9fb]">
@@ -139,20 +168,30 @@ const StudentProfile = ({ adminData, studentId, onBack }) => {
                                 {student.photo_url || student.photoUrl ? (
                                     <img
                                         src={student.photo_url || student.photoUrl}
-                                        alt={student.full_name}
+                                        alt={studentName}
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            const parent = e.target.parentElement;
+                                            if (parent) {
+                                                const fallback = parent.querySelector('.initials-fallback');
+                                                if (fallback) fallback.style.display = 'flex';
+                                            }
+                                        }}
                                         className="w-32 h-32 rounded-[24px] border-4 border-white object-cover shadow-xl bg-white"
                                     />
-                                ) : (
-                                    <div className="w-32 h-32 rounded-[24px] border-4 border-white bg-[#f47c20] flex items-center justify-center text-white text-3xl font-black shadow-xl">
-                                        {initials}
-                                    </div>
-                                )}
+                                ) : null}
+                                <div
+                                    className="initials-fallback w-32 h-32 rounded-[24px] border-4 border-white bg-[#f47c20] flex items-center justify-center text-white text-3xl font-black shadow-xl"
+                                    style={{ display: (student.photo_url || student.photoUrl) ? 'none' : 'flex' }}
+                                >
+                                    {initials}
+                                </div>
                             </div>
                         </div>
 
                         <div className="pt-20 pb-8 px-8 text-center">
-                            <h2 className="text-2xl font-black text-gray-900 mb-1">{student.full_name}</h2>
-                            <p className="text-gray-400 font-bold text-sm tracking-wide mb-4">ID: {student.student_id}</p>
+                            <h2 className="text-2xl font-black text-gray-900 mb-1">{studentName}</h2>
+                            <p className="text-gray-400 font-bold text-sm tracking-wide mb-4">ID: {sIdDisplay}</p>
                             <StatusBadge status={student.status} />
 
                             <div className="mt-8 pt-8 border-t border-gray-50 grid grid-cols-2 gap-4">
@@ -162,7 +201,7 @@ const StudentProfile = ({ adminData, studentId, onBack }) => {
                                 </div>
                                 <div className="text-center">
                                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Join Date</p>
-                                    <p className="text-sm font-black text-gray-900">{student.created_at ? format(new Date(student.created_at), 'MMM yyyy') : 'N/A'}</p>
+                                    <p className="text-sm font-black text-gray-900">{formatJoinDate()}</p>
                                 </div>
                             </div>
                         </div>
@@ -198,9 +237,9 @@ const StudentProfile = ({ adminData, studentId, onBack }) => {
                             </h3>
                         </div>
                         <InfoCard icon={Mail} label="Email Address" value={student.email} />
-                        <InfoCard icon={Phone} label="Contact Number" value={student.contact_number} />
-                        <InfoCard icon={CalendarDays} label="Gender" value={student.gender} />
-                        <InfoCard icon={Building} label="Hostel / Living" value={student.hostel_type || 'Dayscholar'} />
+                        <InfoCard icon={Phone} label="Contact Number" value={student.contact_number || student.contactNumber} />
+                        <InfoCard icon={CalendarDays} label="Gender" value={formatGender()} />
+                        <InfoCard icon={Building} label="Hostel / Living" value={formatHostel()} />
                         <InfoCard icon={MapPin} label="Home Region" value="Local Campus" />
 
                         <div className="col-span-full mt-4 mb-2">
@@ -208,10 +247,10 @@ const StudentProfile = ({ adminData, studentId, onBack }) => {
                                 <GraduationCap className="w-4 h-4" /> Academic Details
                             </h3>
                         </div>
-                        <InfoCard icon={Hash} label="Current Year" value={`${student.year_of_study || '1'}st Year`} />
-                        <InfoCard icon={Calendar} label="Joining Batch" value={`Batch ${student.batch || '2024'}`} />
+                        <InfoCard icon={Hash} label="Current Year" value={`${student.year_of_study || student.year || '1'}st Year`} />
+                        <InfoCard icon={Calendar} label="Joining Batch" value={formatBatch()} />
                         <div className="col-span-full">
-                            <InfoCard icon={Building} label="Department" value={student.departments?.name || 'General Dept'} />
+                            <InfoCard icon={Building} label="Department" value={student.departments?.name || student.department || 'General Dept'} />
                         </div>
                     </div>
 

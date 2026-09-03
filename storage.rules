@@ -26,31 +26,16 @@ service firebase.storage {
              && request.resource.size < 5 * 1024 * 1024;
     }
     
-    match /colleges/{collegeId} {
-      match /students/{studentId}/{fileName} {
-        // Anyone in the college can view student photos
-        allow read: if isAuthenticated() && 
-          (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
-          
-        // College admins can upload, or the student themselves can upload their own photo
-        // Assuming studentId matches request.auth.uid for the student, or we just allow students in the college to upload for now.
-        // For stricter control, we would need to check if the studentId belongs to the authenticated user.
-        // For now, allow college_admin and students to upload valid images.
-        allow write: if isAuthenticated() && 
-          (getUserRole() == 'platform_admin' || 
-          (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student'])) 
-          && isValidImage();
-      }
-      
-      // Default fallback for other paths in the college
-      match /{allPaths=**} {
-        allow read: if isAuthenticated() && 
-          (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
+    match /colleges/{collegeId}/{allPaths=**} {
+      // Any authenticated user in the college or platform admin can read
+      allow read: if isAuthenticated() && 
+        (getUserRole() == 'platform_admin' || getUserCollegeId() == collegeId);
         
-        allow write: if isAuthenticated() && 
-          (getUserRole() == 'platform_admin' || 
-          (getUserCollegeId() == collegeId && getUserRole() == 'college_admin'));
-      }
+      // College admins and students can upload valid images
+      allow write: if isAuthenticated() && 
+        (getUserRole() == 'platform_admin' || 
+        (getUserCollegeId() == collegeId && getUserRole() in ['college_admin', 'student'])) 
+        && isValidImage();
     }
   }
 }

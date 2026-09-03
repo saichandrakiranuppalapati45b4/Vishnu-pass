@@ -1,8 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Loader2, Upload, AlertCircle, CheckCircle2, UserCheck, Clock, LogOut } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../config/firebase';
+import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 
 const ActivationScreen = ({ studentData, onStatusChange, onLogout }) => {
@@ -36,31 +34,30 @@ const ActivationScreen = ({ studentData, onStatusChange, onLogout }) => {
 
         try {
             const fileExt = photoFile.name.split('.').pop();
-            const fileName = `student_activation_${Date.now()}.${fileExt}`;
+            const fileName = `student_${studentData.id || studentData.student_id || Date.now()}_${Date.now()}.${fileExt}`;
             
-            // Upload to Firebase Storage
-            const storageRef = ref(storage, `colleges/${studentData.collegeId}/students/${studentData.id}/profile.jpg`);
-            await uploadBytes(storageRef, photoFile);
-            
-            // Get public URL
-            const publicUrl = await getDownloadURL(storageRef);
+            // Upload to Supabase Storage bucket 'students'
+            const publicUrl = await uploadFile('students', fileName, photoFile);
 
-            // Update Firestore
-            const studentRef = doc(db, `colleges/${studentData.collegeId}/students`, studentData.id);
-            await updateDoc(studentRef, {
-                photo_url: publicUrl,
-                status: 'Active'
-            });
+            // Update Supabase students table
+            const { error: updateErr } = await supabase
+                .from('students')
+                .update({
+                    photo_url: publicUrl,
+                    status: 'Active'
+                })
+                .or(`id.eq.${studentData.id},student_id.eq.${studentData.student_id}`);
+
+            if (updateErr) throw updateErr;
 
             // Log event for audit trail
             await logAuditAction({
                 action: 'Profile Activated',
-                resource: studentData.student_id,
+                resource: studentData.student_id || studentData.id,
                 details: { fullName: studentData.full_name }
             });
 
             if (onStatusChange) {
-                // Manually trigger a UI refresh to 'Active' state
                 onStatusChange('Active');
             }
         } catch (err) {

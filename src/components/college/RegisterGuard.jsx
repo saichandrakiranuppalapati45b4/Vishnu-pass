@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, ChevronDown, Loader2 } from 'lucide-react';
-import { db, storage } from '../../config/firebase';
-import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { createGuardAccount } from '../../lib/functions';
+import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-const RegisterGuard = ({ adminData, onCancel, initialData }) => {
+const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
     const isEditMode = !!initialData;
 
     const [formData, setFormData] = useState({
@@ -34,31 +31,21 @@ const RegisterGuard = ({ adminData, onCancel, initialData }) => {
     const [error, setError] = useState(null);
     const fileInputRef = useRef(null);
 
-    // Fetch dynamic gates and shifts from Firestore
+    // Fetch dynamic gates and shifts from Supabase
     useEffect(() => {
-        if (!adminData?.collegeId) return;
-
         const fetchConfig = async () => {
             try {
-                const gatesRef = collection(db, `colleges/${adminData.collegeId}/gates`);
-                const qGates = query(gatesRef, orderBy('name'));
-                const gateData = await getDocs(qGates);
-                const gList = [];
-                gateData.forEach(d => gList.push({ id: d.id, ...d.data() }));
-                setGates(gList);
+                const { data: gateData } = await supabase.from('guard_gates').select('*').order('name');
+                if (gateData) setGates(gateData);
 
-                const shiftsRef = collection(db, `colleges/${adminData.collegeId}/shifts`);
-                const qShifts = query(shiftsRef, orderBy('name'));
-                const shiftData = await getDocs(qShifts);
-                const sList = [];
-                shiftData.forEach(d => sList.push({ id: d.id, ...d.data() }));
-                setShifts(sList);
+                const { data: shiftData } = await supabase.from('guard_shifts').select('*').order('name');
+                if (shiftData) setShifts(shiftData);
             } catch (err) {
-                console.error("Error fetching gates/shifts:", err);
+                console.warn("Error fetching gates/shifts:", err);
             }
         };
         fetchConfig();
-    }, [adminData]);
+    }, []);
 
     const handlePhotoChange = (e) => {
         const file = e.target.files[0];
@@ -78,8 +65,6 @@ const RegisterGuard = ({ adminData, onCancel, initialData }) => {
 
     const handleRegister = async (e) => {
         e.preventDefault();
-        if (!adminData?.collegeId) return;
-        
         setError(null);
         setIsSubmitting(true);
 
@@ -95,40 +80,41 @@ const RegisterGuard = ({ adminData, onCancel, initialData }) => {
 
             // 1. Upload Photo if selected
             if (photoFile) {
+                const empId = formData.employeeId.trim() || 'guard_' + Date.now();
                 const fileExt = photoFile.name.split('.').pop();
-                const fileName = `guard_${Date.now()}.${fileExt}`;
-                const storageRef = ref(storage, `colleges/${adminData.collegeId}/guards/${fileName}`);
-                await uploadBytes(storageRef, photoFile);
-                photoUrl = await getDownloadURL(storageRef);
+                const fileName = `${empId}_${Date.now()}.${fileExt}`;
+                photoUrl = await uploadFile('guards', fileName, photoFile);
             }
 
             const guardPayload = {
-                fullName: formData.fullName.trim(),
-                employeeId: formData.employeeId.trim(),
+                full_name: formData.fullName.trim(),
+                employee_id: formData.employeeId.trim(),
                 email: formData.email.trim(),
-                contactNumber: formData.contactNumber.trim(),
-                assignedGate: formData.assignedGate || null,
-                shiftType: formData.shiftType || null,
-                emergencyName: formData.emergencyName.trim(),
-                emergencyContact: formData.emergencyContact.trim(),
-                photoUrl: photoUrl
+                contact_number: formData.contactNumber.trim(),
+                gate_id: formData.assignedGate || null,
+                shift_id: formData.shiftType || null,
+                emergency_contact_name: formData.emergencyName.trim(),
+                emergency_contact_number: formData.emergencyContact.trim(),
+                photo_url: photoUrl
             };
 
             // 2. Auth & Database Record
             if (isEditMode) {
-                // Update Guard Record
-                const guardRef = doc(db, `colleges/${adminData.collegeId}/guards`, initialData.id);
-                await updateDoc(guardRef, guardPayload);
-            } else {
-                const result = await createGuardAccount({
-                    email: formData.email.trim(),
-                    password: formData.password,
-                    guardData: guardPayload
-                });
+                const { error: updateErr } = await supabase
+                    .from('guards')
+                    .update(guardPayload)
+                    .eq('id', initialData.id);
 
-                if (result.data?.error) {
-                    throw new Error(result.data.error);
-                }
+                if (updateErr) throw updateErr;
+            } else {
+                const { error: insertErr } = await supabase
+                    .from('guards')
+                    .insert([{
+                        ...guardPayload,
+                        status: 'Active'
+                    }]);
+
+                if (insertErr) throw insertErr;
             }
 
             // 3. Log the action
@@ -142,7 +128,6 @@ const RegisterGuard = ({ adminData, onCancel, initialData }) => {
                 }
             });
 
-            // Success, return to directory
             onCancel();
         } catch (err) {
             console.error(err);

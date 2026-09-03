@@ -7,7 +7,7 @@ const Notifications = () => {
             id: 1,
             type: 'security',
             title: 'Successful Login',
-            message: 'Admin account logged in from a new IP: 192.168.1.45',
+            message: 'College account logged in from a new IP: 192.168.1.45',
             time: '2 minutes ago',
             read: false,
             icon: Shield,
@@ -63,7 +63,7 @@ const Notifications = () => {
             <div className="flex items-center justify-between mb-8">
                 <div>
                     <h1 className="text-[26px] font-bold text-gray-900 mb-1 italic">Notification Center</h1>
-                    <p className="text-sm text-gray-500 font-medium">Keep track of system updates, security alerts, and administrative changes.</p>
+                    <p className="text-sm text-gray-500 font-medium">Keep track of system updates, security alerts, and collegeistrative changes.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button

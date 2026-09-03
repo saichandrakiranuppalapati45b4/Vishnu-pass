@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronDown, TrendingUp, Clock, ArrowUpRight, Loader2 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { formatDistanceToNow, format } from 'date-fns';
 
 // Helper function to generate a consistent color from a name
@@ -21,9 +20,9 @@ const stringToColor = (name) => {
 // Helper function to get access category
 const getAccessCategory = (log) => {
     const status = (log.status || '').toLowerCase();
-    const type = (log.movementType || '').toUpperCase();
+    const type = (log.movement_type || log.movementType || '').toUpperCase();
     
-    if (status === 'completed' || status === 'approved') return 'AUTHORIZED';
+    if (status === 'completed' || status === 'approved' || status === 'success') return 'AUTHORIZED';
     if (status === 'expired' && type === 'OUT') return 'AUTHORIZED';
     
     if (['rejected', 'denied', 'error'].includes(status)) return 'ACCESS DENIED';
@@ -32,7 +31,7 @@ const getAccessCategory = (log) => {
     return 'OTHERS';
 };
 
-const Reports = ({ adminData }) => {
+const Reports = ({ collegeData }) => {
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState({
         total: 0,
@@ -53,30 +52,36 @@ const Reports = ({ adminData }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [allLogsState, setAllLogsState] = useState([]);
 
-    useEffect(() => {
-        if (!adminData?.collegeId) return;
+    const fetchReports = async () => {
+        try {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('movement_logs')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        setLoading(true);
-        const logsRef = collection(db, `colleges/${adminData.collegeId}/scanLogs`);
-        const q = query(logsRef, orderBy('scannedAt', 'desc'));
+            if (error) throw error;
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedLogs = [];
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                // Handle missing or invalid timestamps safely
-                const timestamp = data.scannedAt?.toDate ? data.scannedAt.toDate() : new Date();
-                fetchedLogs.push({ id: doc.id, ...data, scannedAtDate: timestamp });
-            });
+            const fetchedLogs = (data || []).map(d => ({
+                id: d.id,
+                ...d,
+                studentName: d.user_name || d.student_id,
+                studentId: d.student_id,
+                movementType: d.movement_type,
+                scannedAtDate: d.created_at ? new Date(d.created_at) : new Date()
+            }));
+
             setAllLogsState(fetchedLogs);
-            setLoading(false);
-        }, (error) => {
+        } catch (error) {
             console.error("Error fetching reports:", error);
+        } finally {
             setLoading(false);
-        });
+        }
+    };
 
-        return () => unsubscribe();
-    }, [adminData?.collegeId]);
+    useEffect(() => {
+        fetchReports();
+    }, []);
 
     useEffect(() => {
         if (loading || allLogsState.length === 0) return;

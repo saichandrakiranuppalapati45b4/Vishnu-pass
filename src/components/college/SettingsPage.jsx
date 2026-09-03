@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Palette, User, Upload, ChevronDown, Building2, Plus, X, Shield, Loader2, CheckCircle2, ShieldCheck, Clock, GraduationCap } from 'lucide-react';
-import { db, storage } from '../../config/firebase';
-import { collection, getDocs, doc, setDoc, addDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
-import { updatePassword } from 'firebase/auth';
-import { auth } from '../../config/firebase'; // Ensure you have auth exported from firebase config
 
 // Custom Time Picker Component to seamlessly match brand colors
 const CustomTimePicker = ({ value, onChange, placeholder }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    // Parse current value or use defaults
     let currentH = '06', currentM = '00', currentP = 'AM';
     if (value) {
         const parts = value.match(/(\d+):(\d+)\s(AM|PM)/);
@@ -97,7 +92,7 @@ const CustomTimePicker = ({ value, onChange, placeholder }) => {
     );
 };
 
-const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => {
+const SettingsPage = ({ collegeData, onNavigate, branding, onBrandingUpdate }) => {
     const logoInputRef = React.useRef(null);
     const loginBgInputRef = React.useRef(null);
     const { showNotification, showModal } = useNotification();
@@ -112,7 +107,6 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     const [newDept, setNewDept] = useState('');
     const [deptToRemove, setDeptToRemove] = useState(null);
 
-    // Guard Management State
     const [gates, setGates] = useState([]);
     const [newGate, setNewGate] = useState('');
     const [gateToRemove, setGateToRemove] = useState(null);
@@ -128,7 +122,7 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     const [batchToRemove, setBatchToRemove] = useState(null);
     
     const [userEmail, setUserEmail] = useState('admin@vishnupass.com');
-    const [adminName, setAdminName] = useState(branding?.adminName || 'Admin User');
+    const [collegeName, setCollegeName] = useState(branding?.collegeName || 'Vishnu College');
     const [timezone, setTimezone] = useState('Indian Standard Time (IST) - UTC+5:30');
     const [language, setLanguage] = useState('English (United States)');
     
@@ -137,63 +131,53 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
 
-    // Fetch config data from Firestore
+    const fetchData = async () => {
+        try {
+            const { data: depts } = await supabase.from('departments').select('*').order('name');
+            if (depts) setDepartments(depts);
+
+            const { data: gList } = await supabase.from('guard_gates').select('*').order('name');
+            if (gList) setGates(gList);
+
+            const { data: sList } = await supabase.from('guard_shifts').select('*').order('name');
+            if (sList) setShifts(sList);
+
+            const { data: bList } = await supabase.from('batches').select('*').order('name');
+            if (bList) setBatches(bList);
+        } catch (e) {
+            console.warn('Error fetching settings config:', e);
+        }
+    };
+
     useEffect(() => {
-        if (!adminData?.collegeId) return;
-
-        const fetchData = async () => {
-            try {
-                // Fetch departments
-                const deptSnap = await getDocs(query(collection(db, `colleges/${adminData.collegeId}/departments`), orderBy('name')));
-                const deptList = [];
-                deptSnap.forEach(d => deptList.push({ id: d.id, ...d.data() }));
-                setDepartments(deptList);
-
-                // Fetch Gates
-                const gateSnap = await getDocs(query(collection(db, `colleges/${adminData.collegeId}/gates`), orderBy('name')));
-                const gateList = [];
-                gateSnap.forEach(d => gateList.push({ id: d.id, ...d.data() }));
-                setGates(gateList);
-
-                // Fetch Shifts
-                const shiftSnap = await getDocs(query(collection(db, `colleges/${adminData.collegeId}/shifts`), orderBy('name')));
-                const shiftList = [];
-                shiftSnap.forEach(d => shiftList.push({ id: d.id, ...d.data() }));
-                setShifts(shiftList);
-
-                // Fetch Batches
-                const batchSnap = await getDocs(query(collection(db, `colleges/${adminData.collegeId}/batches`), orderBy('name')));
-                const batchList = [];
-                batchSnap.forEach(d => batchList.push({ id: d.id, ...d.data() }));
-                setBatches(batchList);
-
-                // Setup user info
-                setUserEmail(adminData.email || 'admin@vishnupass.com');
-            } catch (err) {
-                console.error("Error fetching settings data:", err);
-            }
-        };
         fetchData();
-    }, [adminData]);
+    }, []);
 
     const [uploading, setUploading] = useState(false);
 
     const handleFileChange = async (e, key) => {
         const file = e.target.files[0];
-        if (!file || !adminData?.collegeId) return;
+        if (!file) return;
 
         try {
             setUploading(true);
             const fileExt = file.name.split('.').pop();
             const fileName = `${key}_${Date.now()}.${fileExt}`;
-            const storageRef = ref(storage, `colleges/${adminData.collegeId}/branding/${fileName}`);
+            const publicUrl = await uploadFile('branding', fileName, file);
 
-            await uploadBytes(storageRef, file);
-            const publicUrl = await getDownloadURL(storageRef);
+            // Save to portal_settings table
+            const { data: existing } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'branding')
+                .maybeSingle();
 
-            // Save to database
-            const settingsRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'branding');
-            await setDoc(settingsRef, { [key]: publicUrl }, { merge: true });
+            const currentBranding = existing?.value ? (typeof existing.value === 'string' ? JSON.parse(existing.value) : existing.value) : {};
+            const updatedBranding = { ...currentBranding, [key]: publicUrl };
+
+            await supabase
+                .from('portal_settings')
+                .upsert([{ key: 'branding', value: JSON.stringify(updatedBranding) }], { onConflict: 'key' });
 
             onBrandingUpdate(key, publicUrl);
 
@@ -217,14 +201,22 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
 
     const addDepartment = async () => {
         const name = newDept.trim();
-        if (!name || departments.some((d) => d.name === name) || !adminData?.collegeId) return;
+        if (!name) return;
 
         try {
-            const docRef = await addDoc(collection(db, `colleges/${adminData.collegeId}/departments`), { name });
-            setDepartments([...departments, { id: docRef.id, name }]);
+            const { data, error } = await supabase
+                .from('departments')
+                .insert([{ name }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            setDepartments(prev => [...prev, data]);
             setNewDept('');
+            showNotification(`Department "${name}" added successfully.`, 'success');
             
-            await logAuditAction({
+            logAuditAction({
                 action: 'Added Department',
                 resource: name
             });
@@ -234,30 +226,35 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     };
 
     const confirmRemove = async () => {
-        if (!adminData?.collegeId || !deptToRemove) return;
+        if (!deptToRemove) return;
         try {
-            await deleteDoc(doc(db, `colleges/${adminData.collegeId}/departments`, deptToRemove.id));
-            await logAuditAction({
-                action: 'Removed Department',
-                resource: deptToRemove.name
-            });
-            setDepartments(departments.filter((d) => d.id !== deptToRemove.id));
+            await supabase.from('departments').delete().eq('id', deptToRemove.id);
+            setDepartments(prev => prev.filter(d => d.id !== deptToRemove.id));
+            showNotification(`Department "${deptToRemove.name}" removed.`, 'info');
+            setDeptToRemove(null);
         } catch (err) {
             showNotification('Failed to remove department.', 'error');
         }
-        setDeptToRemove(null);
     };
 
     const addGate = async () => {
         const name = newGate.trim();
-        if (!name || gates.some((g) => g.name === name) || !adminData?.collegeId) return;
+        if (!name) return;
 
         try {
-            const docRef = await addDoc(collection(db, `colleges/${adminData.collegeId}/gates`), { name });
-            setGates([...gates, { id: docRef.id, name }]);
-            setNewGate('');
+            const { data, error } = await supabase
+                .from('guard_gates')
+                .insert([{ name }])
+                .select()
+                .single();
 
-            await logAuditAction({
+            if (error) throw error;
+
+            setGates(prev => [...prev, data]);
+            setNewGate('');
+            showNotification(`Gate "${name}" added successfully.`, 'success');
+
+            logAuditAction({
                 action: 'Added Gate',
                 resource: name
             });
@@ -267,36 +264,42 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     };
 
     const confirmRemoveGate = async () => {
-        if (!adminData?.collegeId || !gateToRemove) return;
+        if (!gateToRemove) return;
         try {
-            await deleteDoc(doc(db, `colleges/${adminData.collegeId}/gates`, gateToRemove.id));
-            await logAuditAction({
-                action: 'Removed Gate',
-                resource: gateToRemove.name
-            });
-            setGates(gates.filter((g) => g.id !== gateToRemove.id));
+            await supabase.from('guard_gates').delete().eq('id', gateToRemove.id);
+            setGates(prev => prev.filter(g => g.id !== gateToRemove.id));
+            showNotification(`Gate "${gateToRemove.name}" removed.`, 'info');
+            setGateToRemove(null);
         } catch (err) {
             showNotification('Failed to remove gate.', 'error');
         }
-        setGateToRemove(null);
     };
 
     const addShift = async () => {
         const name = newShiftName.trim();
-        if (!name || !newShiftStartTime || !newShiftEndTime || shifts.some((s) => s.name === name) || !adminData?.collegeId) return;
+        if (!name || !newShiftStartTime || !newShiftEndTime) return;
+
         const time = `${newShiftStartTime} - ${newShiftEndTime}`;
 
         try {
-            const docRef = await addDoc(collection(db, `colleges/${adminData.collegeId}/shifts`), { name, time });
-            setShifts([...shifts, { id: docRef.id, name, time }]);
+            const { data, error } = await supabase
+                .from('guard_shifts')
+                .insert([{ name, time }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            setShifts(prev => [...prev, data]);
             setNewShiftName('');
             setNewShiftStartTime('');
             setNewShiftEndTime('');
+            showNotification(`Shift "${name}" added successfully.`, 'success');
 
-            await logAuditAction({
+            logAuditAction({
                 action: 'Added Shift',
                 resource: name,
-                details: { time: time }
+                details: { time }
             });
         } catch (err) {
             showNotification('Failed to add shift.', 'error');
@@ -304,30 +307,35 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     };
 
     const confirmRemoveShift = async () => {
-        if (!adminData?.collegeId || !shiftToRemove) return;
+        if (!shiftToRemove) return;
         try {
-            await deleteDoc(doc(db, `colleges/${adminData.collegeId}/shifts`, shiftToRemove.id));
-            await logAuditAction({
-                action: 'Removed Shift',
-                resource: shiftToRemove.name
-            });
-            setShifts(shifts.filter((s) => s.id !== shiftToRemove.id));
+            await supabase.from('guard_shifts').delete().eq('id', shiftToRemove.id);
+            setShifts(prev => prev.filter(s => s.id !== shiftToRemove.id));
+            showNotification(`Shift "${shiftToRemove.name}" removed.`, 'info');
+            setShiftToRemove(null);
         } catch (err) {
             showNotification('Failed to remove shift.', 'error');
         }
-        setShiftToRemove(null);
     };
 
     const addBatch = async () => {
         const name = newBatch.trim();
-        if (!name || batches.some((b) => b.name === name) || !adminData?.collegeId) return;
+        if (!name) return;
 
         try {
-            const docRef = await addDoc(collection(db, `colleges/${adminData.collegeId}/batches`), { name });
-            setBatches([...batches, { id: docRef.id, name }]);
-            setNewBatch('');
+            const { data, error } = await supabase
+                .from('batches')
+                .insert([{ name }])
+                .select()
+                .single();
 
-            await logAuditAction({
+            if (error) throw error;
+
+            setBatches(prev => [...prev, data]);
+            setNewBatch('');
+            showNotification(`Batch "${name}" added successfully.`, 'success');
+
+            logAuditAction({
                 action: 'Added Batch',
                 resource: name
             });
@@ -337,44 +345,50 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
     };
 
     const confirmRemoveBatch = async () => {
-        if (!adminData?.collegeId || !batchToRemove) return;
+        if (!batchToRemove) return;
         try {
-            await deleteDoc(doc(db, `colleges/${adminData.collegeId}/batches`, batchToRemove.id));
-            await logAuditAction({
-                action: 'Removed Batch',
-                resource: batchToRemove.name
-            });
-            setBatches(batches.filter((b) => b.id !== batchToRemove.id));
+            await supabase.from('batches').delete().eq('id', batchToRemove.id);
+            setBatches(prev => prev.filter(b => b.id !== batchToRemove.id));
+            showNotification(`Batch "${batchToRemove.name}" removed.`, 'info');
+            setBatchToRemove(null);
         } catch (err) {
             showNotification('Failed to remove batch.', 'error');
         }
-        setBatchToRemove(null);
     };
 
     const handleSaveGeneral = async () => {
         setIsSavingGeneral(true);
-        // Simulate save process
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 600));
         setIsSavingGeneral(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
     };
 
     const handleSaveProfile = async () => {
-        if (!adminName.trim() || !adminData?.collegeId) return;
+        if (!collegeName.trim()) return;
 
         try {
             setIsSavingProfile(true);
 
-            // Update local admin document name if applicable, or just branding
-            const settingsRef = doc(db, `colleges/${adminData.collegeId}/settings`, 'branding');
-            await setDoc(settingsRef, { adminName: adminName.trim() }, { merge: true });
+            // Update branding setting in portal_settings
+            const { data: existing } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'branding')
+                .maybeSingle();
 
-            onBrandingUpdate('adminName', adminName.trim());
+            const currentBranding = existing?.value ? (typeof existing.value === 'string' ? JSON.parse(existing.value) : existing.value) : {};
+            const updatedBranding = { ...currentBranding, collegeName: collegeName.trim() };
+
+            await supabase
+                .from('portal_settings')
+                .upsert([{ key: 'branding', value: JSON.stringify(updatedBranding) }], { onConflict: 'key' });
+
+            onBrandingUpdate('collegeName', collegeName.trim());
 
             await logAuditAction({
                 action: 'Updated Profile',
-                resource: adminName.trim(),
+                resource: collegeName.trim(),
                 details: { email: userEmail }
             });
 
@@ -382,7 +396,7 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
             setTimeout(() => setProfileSaveSuccess(false), 3000);
             showNotification('Profile updated successfully.', 'success');
         } catch (err) {
-            showNotification('Failed to save profile name. Please try again.', 'error');
+            showNotification('Failed to save profile name.', 'error');
         } finally {
             setIsSavingProfile(false);
         }
@@ -531,76 +545,6 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
                 </div>
             </div>
 
-            {/* Branding */}
-            <div className="mb-8">
-                <div className="flex items-center gap-2.5 mb-5">
-                    <Palette className="w-5 h-5 text-[#f47c20]" />
-                    <h2 className="font-bold text-gray-900 text-[16px]">Branding</h2>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Portal Logo */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">Portal Logo</h3>
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-[#f47c20] rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden group relative">
-                                {branding?.portalLogo ? (
-                                    <img src={branding.portalLogo} alt="Portal Logo" className="w-full h-full object-cover" />
-                                ) : (
-                                    <svg width="28" height="28" viewBox="0 0 100 100" fill="none">
-                                        <defs><path id="logo" d="M 50 15 L 75 28 L 65 44 L 50 35 L 35 44 L 25 28 Z" /></defs>
-                                        <use href="#logo" fill="white" />
-                                        <use href="#logo" fill="white" opacity="0.7" transform="rotate(120 50 50)" />
-                                        <use href="#logo" fill="white" opacity="0.7" transform="rotate(240 50 50)" />
-                                    </svg>
-                                )}
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-400 font-medium mb-2 leading-relaxed">
-                                    Update your portal's logo. Recommended size: 200×200px. Supports PNG, JPG or SVG.
-                                </p>
-                                <button
-                                    onClick={() => logoInputRef.current.click()}
-                                    className="flex items-center gap-1.5 text-sm font-semibold text-[#f47c20] hover:text-[#d96a18] transition-colors cursor-pointer"
-                                >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    Upload New Logo
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Login Screen Image */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">Login Screen Image</h3>
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden relative">
-                                {branding?.loginBackground ? (
-                                    <img src={branding.loginBackground} alt="Login Background" className="w-full h-full object-cover" />
-                                ) : (
-                                    <svg className="w-7 h-7 text-[#f47c20]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                        <rect x="2" y="3" width="20" height="14" rx="2" />
-                                        <line x1="8" y1="21" x2="16" y2="21" />
-                                        <line x1="12" y1="17" x2="12" y2="21" />
-                                    </svg>
-                                )}
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-400 font-medium mb-2 leading-relaxed">
-                                    Customize the background of your login page. Recommended size: 1920×1080px.
-                                </p>
-                                <button
-                                    onClick={() => loginBgInputRef.current.click()}
-                                    className="flex items-center gap-1.5 text-sm font-semibold text-[#f47c20] hover:text-[#d96a18] transition-colors cursor-pointer"
-                                >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    Upload New Login Image
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             {/* Department Settings */}
             <div className="mb-8">
@@ -814,11 +758,11 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
                 </div>
             </div>
 
-            {/* Admin Account */}
+            {/* College Account */}
             <div>
                 <div className="flex items-center gap-2.5 mb-5">
                     <User className="w-5 h-5 text-[#f47c20]" />
-                    <h2 className="font-bold text-gray-900 text-[16px]">Admin Account</h2>
+                    <h2 className="font-bold text-gray-900 text-[16px]">College Account</h2>
                 </div>
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
@@ -827,8 +771,8 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
                             <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Full Name</label>
                             <input
                                 type="text"
-                                value={adminName}
-                                onChange={(e) => setAdminName(e.target.value)}
+                                value={collegeName}
+                                onChange={(e) => setCollegeName(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#f47c20]/20 focus:border-[#f47c20]"
                             />
                         </div>
@@ -856,7 +800,7 @@ const SettingsPage = ({ adminData, onNavigate, branding, onBrandingUpdate }) => 
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={handleSaveProfile}
-                                disabled={isSavingProfile || !adminName.trim()}
+                                disabled={isSavingProfile || !collegeName.trim()}
                                 className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-sm flex items-center gap-2 cursor-pointer ${profileSaveSuccess
                                     ? 'bg-emerald-500 text-white'
                                     : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'

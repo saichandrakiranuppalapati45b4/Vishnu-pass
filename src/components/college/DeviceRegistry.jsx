@@ -10,56 +10,45 @@ import {
     AlertCircle,
     User
 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 
-const DeviceRegistry = ({ onBack, adminData }) => {
+const DeviceRegistry = ({ onBack, collegeData }) => {
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         fetchDevices();
-    }, [adminData?.collegeId]);
+    }, []);
 
     const fetchDevices = async () => {
-        if (!adminData?.collegeId) return;
         setLoading(true);
         try {
-            // First fetch devices
-            const devicesRef = collection(db, `colleges/${adminData.collegeId}/devices`);
-            const devicesSnap = await getDocs(devicesRef);
-            
-            // Then fetch students to map names
-            const studentsRef = collection(db, `colleges/${adminData.collegeId}/students`);
-            const studentsSnap = await getDocs(studentsRef);
-            
-            const studentsMap = {};
-            studentsSnap.forEach(doc => {
-                studentsMap[doc.id] = doc.data();
-            });
+            const { data: devicesData } = await supabase
+                .from('student_devices')
+                .select('*')
+                .order('last_sync', { ascending: false });
 
-            const fetchedDevices = [];
-            devicesSnap.forEach(doc => {
-                const data = doc.data();
-                const studentData = studentsMap[data.studentId] || {};
-                
-                fetchedDevices.push({
-                    id: doc.id,
-                    ...data,
-                    students: {
-                        full_name: studentData.name || data.studentName || 'Unknown Student',
-                        student_id: studentData.studentId || data.studentId || 'N/A'
-                    }
-                });
-            });
+            const { data: studentsData } = await supabase
+                .from('students')
+                .select('student_id, full_name');
 
-            // Sort by last sync
-            fetchedDevices.sort((a, b) => {
-                const dateA = a.lastSync?.toDate ? a.lastSync.toDate() : new Date(a.lastSync || 0);
-                const dateB = b.lastSync?.toDate ? b.lastSync.toDate() : new Date(b.lastSync || 0);
-                return dateB - dateA;
-            });
+            const studentMap = (studentsData || []).reduce((acc, curr) => {
+                acc[curr.student_id] = curr.full_name;
+                return acc;
+            }, {});
+
+            const fetchedDevices = (devicesData || []).map(d => ({
+                id: d.id,
+                deviceName: d.device_name || 'Mobile Device',
+                deviceId: d.device_id || d.id,
+                status: d.status || 'Active',
+                lastSync: d.last_sync,
+                students: {
+                    full_name: studentMap[d.student_id] || d.student_id || 'Student',
+                    student_id: d.student_id
+                }
+            }));
             
             setDevices(fetchedDevices);
         } catch (err) {

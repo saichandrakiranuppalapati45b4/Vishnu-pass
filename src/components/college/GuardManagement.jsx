@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, MoreVertical, MapPin } from 'lucide-react';
 import RegisterGuard from './RegisterGuard';
 import GuardProfile from './GuardProfile';
-import { db } from '../../config/firebase';
-import { collection, getDocs, doc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotification } from '../../contexts/NotificationContext';
 
@@ -21,7 +20,7 @@ const stringToColor = (name) => {
     return color;
 };
 
-const GuardManagement = ({ adminData }) => {
+const GuardManagement = ({ collegeData }) => {
     const [activeTab, setActiveTab] = useState('all');
     const [isRegistering, setIsRegistering] = useState(false);
     const [selectedGuard, setSelectedGuard] = useState(null);
@@ -39,32 +38,24 @@ const GuardManagement = ({ adminData }) => {
 
     useEffect(() => {
         fetchGuards();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isRegistering, adminData]);
+    }, [isRegistering]);
 
     const fetchGuards = async () => {
-        if (!adminData?.collegeId) return;
         try {
             setIsLoading(true);
-            const guardsRef = collection(db, `colleges/${adminData.collegeId}/guards`);
-            const q = query(guardsRef, orderBy('createdAt', 'desc'));
-            const querySnapshot = await getDocs(q);
-            
-            const guardsList = [];
-            querySnapshot.forEach((doc) => {
-                guardsList.push({ id: doc.id, ...doc.data() });
-            });
-            
-            // Note: Since we are not doing a join, we can fetch gates in parallel or display gateId
-            // In a real app we might fetch all gates and map them here
-            const gatesRef = collection(db, `colleges/${adminData.collegeId}/gates`);
-            const gatesSnap = await getDocs(gatesRef);
-            const gatesMap = {};
-            gatesSnap.forEach(d => { gatesMap[d.id] = d.data().name; });
-            
-            const enrichedGuards = guardsList.map(g => ({
+            const { data, error } = await supabase
+                .from('guards')
+                .select('*, guard_gates(name), guard_shifts(name)')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const enrichedGuards = (data || []).map(g => ({
                 ...g,
-                gateName: g.assignedGate ? gatesMap[g.assignedGate] : null
+                assignedGate: g.gate_id,
+                gateName: g.guard_gates?.name || g.gate_id || 'Main Gate',
+                assignedShift: g.guard_shifts?.name || g.shift_id || 'Morning Shift',
+                status: g.status || 'Active'
             }));
 
             setGuards(enrichedGuards);
@@ -85,7 +76,7 @@ const GuardManagement = ({ adminData }) => {
     });
 
     const handleActionClick = (e, guardId) => {
-        e.stopPropagation(); // Prevent opening the profile view
+        e.stopPropagation();
         setOpenDropdownId(openDropdownId === guardId ? null : guardId);
     };
 
@@ -102,7 +93,7 @@ const GuardManagement = ({ adminData }) => {
 
         const confirmed = await showModal({
             title: 'Deactivate Guard',
-            message: "Are you sure you want to deactivate this guard profile? They will no longer be able to log in.",
+            message: "Are you sure you want to deactivate this guard profile?",
             confirmText: 'Deactivate',
             cancelText: 'Cancel',
             type: 'warning'
@@ -110,8 +101,11 @@ const GuardManagement = ({ adminData }) => {
 
         if (confirmed) {
             try {
-                const guardRef = doc(db, `colleges/${adminData.collegeId}/guards`, guardId);
-                await updateDoc(guardRef, { status: 'Inactive' });
+                await supabase
+                    .from('guards')
+                    .update({ status: 'Inactive' })
+                    .eq('id', guardId);
+
                 fetchGuards();
                 showNotification('Guard profile deactivated successfully.', 'success');
             } catch (err) {
@@ -131,7 +125,7 @@ const GuardManagement = ({ adminData }) => {
         <>
             {isRegistering ? (
                 <RegisterGuard
-                    adminData={adminData}
+                    collegeData={collegeData}
                     initialData={editGuardData}
                     onCancel={() => {
                         setIsRegistering(false);
@@ -140,7 +134,7 @@ const GuardManagement = ({ adminData }) => {
                 />
             ) : selectedGuard ? (
                 <GuardProfile
-                    adminData={adminData}
+                    collegeData={collegeData}
                     guard={selectedGuard}
                     onBack={() => setSelectedGuard(null)}
                     onEdit={(guard) => {
@@ -210,7 +204,7 @@ const GuardManagement = ({ adminData }) => {
                     </div>
 
                     {/* Table */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                         <table className="w-full text-left text-sm">
                             <thead>
                                 <tr className="border-b border-gray-100">
@@ -231,7 +225,7 @@ const GuardManagement = ({ adminData }) => {
                                         <td colSpan="5" className="px-6 py-12 text-center text-gray-400">No guards found.</td>
                                     </tr>
                                 ) : (
-                                    filteredGuards.map((guard) => (
+                                    filteredGuards.map((guard, index) => (
                                         <tr
                                             key={guard.id}
                                             onClick={() => setSelectedGuard(guard)}
@@ -268,31 +262,33 @@ const GuardManagement = ({ adminData }) => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600 font-medium">{guard.contactNumber || guard.contact_number}</td>
-                                            <td className="px-6 py-4 text-right relative">
-                                                <button
-                                                    onClick={(e) => handleActionClick(e, guard.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                                                >
-                                                    <MoreVertical className="w-4 h-4" />
-                                                </button>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="relative inline-block text-left">
+                                                    <button
+                                                        onClick={(e) => handleActionClick(e, guard.id)}
+                                                        className={`p-1.5 text-gray-400 hover:text-gray-600 rounded-lg transition-colors cursor-pointer ${openDropdownId === guard.id ? 'bg-gray-100 text-gray-900' : ''}`}
+                                                    >
+                                                        <MoreVertical className="w-4 h-4" />
+                                                    </button>
 
-                                                {/* Dropdown Menu */}
-                                                {openDropdownId === guard.id && (
-                                                    <div className="absolute right-6 top-10 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-                                                        <button
-                                                            onClick={(e) => handleEditGuard(e, guard)}
-                                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#f47c20] transition-colors cursor-pointer"
-                                                        >
-                                                            Edit Profile
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => handleDeleteGuard(e, guard.id)}
-                                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                                                        >
-                                                            Deactivate Profile
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                    {/* Dropdown Menu */}
+                                                    {openDropdownId === guard.id && (
+                                                        <div className={`absolute right-0 ${filteredGuards.length > 2 && index >= filteredGuards.length - 2 ? 'bottom-full mb-2' : 'top-full mt-2'} w-44 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 px-1 z-50 animate-in fade-in zoom-in-95 duration-100`}>
+                                                            <button
+                                                                onClick={(e) => handleEditGuard(e, guard)}
+                                                                className="w-full text-left px-3 py-2 text-xs font-bold text-gray-700 hover:bg-orange-50 hover:text-[#f47c20] rounded-lg transition-colors cursor-pointer"
+                                                            >
+                                                                Edit Profile
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => handleDeleteGuard(e, guard.id)}
+                                                                className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                            >
+                                                                Deactivate Profile
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))

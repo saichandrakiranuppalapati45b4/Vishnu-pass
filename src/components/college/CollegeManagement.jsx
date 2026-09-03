@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Download, Filter, Shield, Loader2 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, doc, getDocs, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
-import AddAdminModal from './AddAdminModal';
+import AddCollegeModal from './AddCollegeModal';
 
 // Helper to generate initials from name
 const getInitials = (name) => {
@@ -27,63 +26,66 @@ const getAvatarColor = (name) => {
     return `hsl(${hue}, 65%, 45%)`;
 };
 
-const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
-    const [admins, setAdmins] = useState([]);
+const CollegeManagement = ({ onNavigate, currentCollege, collegeData }) => {
+    const [colleges, setColleges] = useState([]);
     const [loading, setLoading] = useState(true);
     const { showNotification, showModal } = useNotification();
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingRoleId, setEditingRoleId] = useState(null);
     const [updating, setUpdating] = useState(null);
 
+    const fetchColleges = async () => {
+        try {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('admins')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedColleges = (data || []).map((college) => {
+                const status = college.status || 'Active';
+                return {
+                    ...college,
+                    initials: getInitials(college.name),
+                    avatar: getAvatarColor(college.name),
+                    roleBadge: college.role || 'Admin',
+                    status: status,
+                    statusColor: status === 'Inactive' ? 'text-gray-400' : 'text-emerald-500',
+                };
+            });
+
+            setColleges(mappedColleges);
+        } catch (err) {
+            console.error("Error fetching admins:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchAdmins = async () => {
-            if (!adminData?.collegeId) return;
-            try {
-                const adminsRef = collection(db, `colleges/${adminData.collegeId}/admins`);
-                const q = query(adminsRef, orderBy('createdAt', 'desc'));
-                const querySnapshot = await getDocs(q);
+        fetchColleges();
+    }, [showAddModal]);
 
-                const mappedAdmins = [];
-                querySnapshot.forEach((docSnap) => {
-                    const admin = { id: docSnap.id, ...docSnap.data() };
-                    const status = admin.status || 'Active';
-                    mappedAdmins.push({
-                        ...admin,
-                        initials: getInitials(admin.name),
-                        avatar: getAvatarColor(admin.name),
-                        roleBadge: admin.role,
-                        status: status,
-                        statusColor: status === 'Inactive' ? 'text-gray-400' : 'text-emerald-500',
-                    });
-                });
-
-                setAdmins(mappedAdmins);
-            } catch (err) {
-                console.error("Error fetching admins:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchAdmins();
-    }, [showAddModal, adminData?.collegeId]); // Refetch when add modal closes
-
-    const handleToggleStatus = async (id, currentStatus, adminName) => {
-        if (!adminData?.collegeId) return;
+    const handleToggleStatus = async (id, currentStatus, collegeName) => {
         const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
         setUpdating(id);
         try {
-            const adminRef = doc(db, `colleges/${adminData.collegeId}/admins`, id);
-            await updateDoc(adminRef, { status: newStatus });
+            const { error } = await supabase
+                .from('admins')
+                .update({ status: newStatus })
+                .eq('id', id);
+
+            if (error) throw error;
             
             await logAuditAction({
                 action: newStatus === 'Active' ? 'Activated Admin' : 'Deactivated Admin',
-                resource: `Admin: ${adminName || id}`,
-                details: { adminId: id, previousStatus: currentStatus, newStatus: newStatus },
-                collegeId: adminData.collegeId
+                resource: `Admin: ${collegeName || id}`,
+                details: { adminId: id, previousStatus: currentStatus, newStatus: newStatus }
             });
 
-            setAdmins(admins.map(a => a.id === id ? { 
+            setColleges(colleges.map(a => a.id === id ? { 
                 ...a, 
                 status: newStatus, 
                 statusColor: newStatus === 'Inactive' ? 'text-gray-400' : 'text-emerald-500' 
@@ -96,25 +98,27 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
         }
     };
 
-    const handleRoleChange = async (id, newRole, adminName, oldRole) => {
-        if (!adminData?.collegeId) return;
+    const handleRoleChange = async (id, newRole, collegeName, oldRole) => {
         if (newRole === oldRole) {
             setEditingRoleId(null);
             return;
         }
         setUpdating(id);
         try {
-            const adminRef = doc(db, `colleges/${adminData.collegeId}/admins`, id);
-            await updateDoc(adminRef, { role: newRole });
+            const { error } = await supabase
+                .from('admins')
+                .update({ role: newRole })
+                .eq('id', id);
+
+            if (error) throw error;
 
             await logAuditAction({
                 action: 'Changed Role',
-                resource: `Admin: ${adminName || id}`,
-                details: { adminId: id, oldRole: oldRole, newRole: newRole },
-                collegeId: adminData.collegeId
+                resource: `Admin: ${collegeName || id}`,
+                details: { adminId: id, oldRole, newRole }
             });
 
-            setAdmins(admins.map(a => a.id === id ? { ...a, role: newRole, roleBadge: newRole } : a));
+            setColleges(colleges.map(a => a.id === id ? { ...a, role: newRole, roleBadge: newRole } : a));
             setEditingRoleId(null);
         } catch (err) {
             console.error(err);
@@ -124,24 +128,10 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
         }
     };
 
-    const handleDeleteAdmin = async (id, name, email) => {
-        if (!adminData?.collegeId) return;
-        // Diagnostic Alert 1
-        const ownerEmail = 'saichandrakiranuppalapati@gmail.com';
-        const currentEmail = currentAdmin?.email?.toLowerCase().trim();
-
-        if (currentEmail !== ownerEmail) {
-            showModal({
-                title: 'Permission Denied',
-                message: `Only ${ownerEmail} can delete administrators. (Logged in as: ${currentEmail || 'Unknown'})`,
-                type: 'error'
-            });
-            return;
-        }
-
+    const handleDeleteCollege = async (id, name, email) => {
         const confirmed = await showModal({
             title: 'Delete Administrator',
-            message: `Are you sure you want to PERMANENTLY delete administrator ${name} (${email || 'no email'})? This action will also remove them from Authentication.`,
+            message: `Are you sure you want to PERMANENTLY delete administrator ${name} (${email || 'no email'})?`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: 'warning'
@@ -153,22 +143,21 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
 
         setUpdating(id);
         try {
-            // Delete from Firestore
-            const adminRef = doc(db, `colleges/${adminData.collegeId}/admins`, id);
-            await deleteDoc(adminRef);
-            
-            // In a real app, you would also call a cloud function here to delete the Firebase Auth user
-            // e.g., await httpsCallable(functions, 'deleteAdminAccount')({ userId: id });
+            const { error } = await supabase
+                .from('admins')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
 
             await logAuditAction({
                 action: 'Deleted Admin',
                 resource: `Admin: ${name} (${email})`,
-                details: { adminId: id, email },
-                collegeId: adminData.collegeId
+                details: { adminId: id, email }
             });
 
             showNotification("Administrator deleted successfully.", "success");
-            setAdmins(admins.filter(a => a.id !== id));
+            setColleges(colleges.filter(a => a.id !== id));
         } catch (err) {
             console.error(err);
             showNotification(`Failed to delete admin: ${err.message || "Unknown error"}`, "error");
@@ -182,7 +171,7 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
             {/* Header */}
             <div className="flex items-start justify-between mb-8">
                 <div>
-                    <h1 className="text-3xl font-black text-[#1a2b3c] mb-2 tracking-tight">System Administrators</h1>
+                    <h1 className="text-3xl font-black text-[#1a2b3c] mb-2 tracking-tight">System Collegeistrators</h1>
                     <p className="text-sm text-gray-500 font-medium">Manage system-wide permissions and portal access for staff members.</p>
                 </div>
                 <button
@@ -190,23 +179,23 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                     className="flex items-center gap-2 px-6 py-3 bg-[#f47c20] hover:bg-[#e06d1c] text-white rounded-xl text-sm font-bold transition-all shadow-[0_4px_14px_rgba(244,124,32,0.3)] hover:shadow-[0_6px_20px_rgba(244,124,32,0.4)] hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                 >
                     <UserPlus className="w-4 h-4" />
-                    Invite New Admin
+                    Invite New College
                 </button>
             </div>
 
             {/* Stat Cards */}
             <div className="grid grid-cols-3 gap-6 mb-8">
-                {/* Total Admins */}
+                {/* Total Colleges */}
                 <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                     <div className="flex items-center justify-between mb-4">
-                        <p className="text-xs font-bold text-gray-400">Total Admins</p>
+                        <p className="text-xs font-bold text-gray-400">Total Colleges</p>
                         <div className="w-10 h-10 bg-[#fff5ec] rounded-2xl flex items-center justify-center">
                             <Shield className="w-5 h-5 text-[#f47c20] fill-[#f47c20]/20" />
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <h3 className="text-[32px] font-black text-[#1a2b3c] leading-tight tracking-tight">
-                            {loading ? <Loader2 className="w-6 h-6 animate-spin text-gray-400 inline" /> : admins.length}
+                            {loading ? <Loader2 className="w-6 h-6 animate-spin text-gray-400 inline" /> : colleges.length}
                         </h3>
                     </div>
                 </div>
@@ -234,19 +223,19 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                 </div>
             </div>
 
-            {/* Administrator List */}
+            {/* Collegeistrator List */}
             <div className="bg-white rounded-3xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden mb-8">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-                    <h3 className="font-bold text-[#1a2b3c] text-lg">Administrator List</h3>
+                    <h3 className="font-bold text-[#1a2b3c] text-lg">Collegeistrator List</h3>
                     <div className="flex items-center gap-2">
                         <button className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer">
                             <Filter className="w-4 h-4" />
                         </button>
                         <button 
                             onClick={() => {
-                                // Exclude primary admin from download for security
-                                const exportData = admins.filter(a => a.email !== 'saichandrakiranuppalapati@gmail.com');
-                                showNotification("Admin list (excluding primary admin) ready for export.", "success");
+                                // Exclude primary college from download for security
+                                const exportData = colleges.filter(a => a.email !== 'saichandrakiranuppalapati@gmail.com');
+                                showNotification("College list (excluding primary college) ready for export.", "success");
                             }}
                             className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer"
                         >
@@ -258,15 +247,15 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-20">
                         <Loader2 className="w-8 h-8 text-[#f47c20] animate-spin mb-4" />
-                        <p className="text-sm font-bold text-gray-400">Loading administrators...</p>
+                        <p className="text-sm font-bold text-gray-400">Loading collegeistrators...</p>
                     </div>
-                ) : admins.length === 0 ? (
+                ) : colleges.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
                             <Shield className="w-8 h-8 text-gray-300" />
                         </div>
-                        <h3 className="text-base font-bold text-[#1a2b3c] mb-1">No Administrators Found</h3>
-                        <p className="text-sm text-gray-500">There are currently no administrator accounts in the system.</p>
+                        <h3 className="text-base font-bold text-[#1a2b3c] mb-1">No Collegeistrators Found</h3>
+                        <p className="text-sm text-gray-500">There are currently no collegeistrator accounts in the system.</p>
                     </div>
                 ) : (
                     <table className="w-full text-left text-sm">
@@ -280,100 +269,100 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50 bg-white">
-                            {admins.map((admin) => (
+                            {colleges.map((college) => (
                                 <tr 
-                                    key={admin.id} 
-                                    onClick={() => onNavigate('admin-profile', admin.id)}
+                                    key={college.id} 
+                                    onClick={() => onNavigate('college-profile', college.id)}
                                     className="hover:bg-gray-50/50 transition-colors cursor-pointer"
                                 >
                                     <td className="px-6 py-5">
                                         <div className="flex items-center gap-4">
                                             <div
                                                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                                                    admin.role === 'Super Admin' ? 'bg-[#fff5ec] text-[#f47c20]' : 
-                                                    admin.role === 'Editor' ? 'bg-gray-100 text-gray-500' : 
+                                                    college.role === 'Super College' ? 'bg-[#fff5ec] text-[#f47c20]' : 
+                                                    college.role === 'Editor' ? 'bg-gray-100 text-gray-500' : 
                                                     'bg-blue-50 text-blue-600'
                                                 }`}
                                             >
-                                                {admin.initials}
+                                                {college.initials}
                                             </div>
-                                            <span className="font-bold text-[#1a2b3c]">{admin.name}</span>
+                                            <span className="font-bold text-[#1a2b3c]">{college.name}</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        {editingRoleId === admin.id ? (
+                                        {editingRoleId === college.id ? (
                                             <select
                                                 autoFocus
-                                                disabled={updating === admin.id}
-                                                defaultValue={admin.role}
+                                                disabled={updating === college.id}
+                                                defaultValue={college.role}
                                                 onClick={(e) => e.stopPropagation()}
-                                                onChange={(e) => handleRoleChange(admin.id, e.target.value, admin.name, admin.role)}
+                                                onChange={(e) => handleRoleChange(college.id, e.target.value, college.name, college.role)}
                                                 onBlur={() => setEditingRoleId(null)}
                                                 className="bg-white border border-gray-200 text-[#1a2b3c] text-[11px] font-black rounded-lg focus:ring-2 focus:ring-[#f47c20] focus:border-transparent outline-none py-1.5 px-2 w-32 shadow-sm disabled:opacity-50"
                                             >
-                                                <option value="Super Admin">Super Admin</option>
+                                                <option value="Super College">Super College</option>
                                                 <option value="Manager">Manager</option>
                                                 <option value="Editor">Editor</option>
                                             </select>
                                         ) : (
                                             <span className={`inline-flex px-3 py-1 text-[11px] font-black rounded-full ${
-                                                admin.role === 'Super Admin' ? 'bg-[#fff5ec] text-[#f47c20]' : 
-                                                admin.role === 'Editor' ? 'bg-[#f8f9fb] text-[#1a2b3c]' : 
+                                                college.role === 'Super College' ? 'bg-[#fff5ec] text-[#f47c20]' : 
+                                                college.role === 'Editor' ? 'bg-[#f8f9fb] text-[#1a2b3c]' : 
                                                 'bg-[#f0f4f8] text-[#1a2b3c]'
                                             }`}>
-                                                {admin.role || 'Unassigned'}
+                                                {college.role || 'Unassigned'}
                                             </span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-5 text-gray-500 font-medium">{admin.email}</td>
+                                    <td className="px-6 py-5 text-gray-500 font-medium">{college.email}</td>
                                     <td className="px-6 py-5">
-                                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${admin.statusColor} ${updating === admin.id ? 'opacity-50' : ''}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${admin.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
-                                            {admin.status}
+                                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${college.statusColor} ${updating === college.id ? 'opacity-50' : ''}`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${college.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
+                                            {college.status}
                                         </span>
                                     </td>
                                     <td className="px-6 py-5 text-right whitespace-nowrap">
-                                        {editingRoleId !== admin.id ? (
+                                        {editingRoleId !== college.id ? (
                                             <>
                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); setEditingRoleId(admin.id); }}
-                                                    disabled={updating === admin.id}
+                                                    onClick={(e) => { e.stopPropagation(); setEditingRoleId(college.id); }}
+                                                    disabled={updating === college.id}
                                                     className="text-[13px] font-bold text-[#f47c20] hover:text-[#e06d1c] transition-colors mr-4 disabled:opacity-50 cursor-pointer"
                                                 >
                                                     Edit Role
                                                 </button>
-                                                {currentAdmin?.email?.toLowerCase().trim() === 'saichandrakiranuppalapati@gmail.com' && (
+                                                {currentCollege?.email?.toLowerCase().trim() === 'saichandrakiranuppalapati@gmail.com' && (
                                                     <button 
                                                         onClick={(e) => { 
                                                             e.stopPropagation(); 
-                                                            handleDeleteAdmin(admin.id, admin.name, admin.email); 
+                                                            handleDeleteCollege(college.id, college.name, college.email); 
                                                         }}
-                                                        disabled={updating === admin.id || admin.id === currentAdmin?.id}
+                                                        disabled={updating === college.id || college.id === currentCollege?.id}
                                                         className="px-4 py-1.5 text-[11px] font-black bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg border border-red-100 transition-all mr-4 disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-tighter cursor-pointer"
                                                     >
-                                                        {updating === admin.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Delete'}
+                                                        {updating === college.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Delete'}
                                                     </button>
                                                 )}
                                             </>
                                         ) : (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); setEditingRoleId(null); }}
-                                                disabled={updating === admin.id}
+                                                disabled={updating === college.id}
                                                 className="text-[13px] font-bold text-gray-500 hover:text-gray-700 transition-colors mr-6 disabled:opacity-50 cursor-pointer"
                                             >
                                                 Cancel
                                             </button>
                                         )}
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleToggleStatus(admin.id, admin.status, admin.name); }}
-                                            disabled={updating === admin.id || admin.role === 'Super Admin'}
+                                            onClick={(e) => { e.stopPropagation(); handleToggleStatus(college.id, college.status, college.name); }}
+                                            disabled={updating === college.id || college.role === 'Super College'}
                                             className={`text-[13px] font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
-                                                admin.status === 'Active' ? 'text-red-500 hover:text-red-600' : 'text-emerald-500 hover:text-emerald-600'
+                                                college.status === 'Active' ? 'text-red-500 hover:text-red-600' : 'text-emerald-500 hover:text-emerald-600'
                                             }`}
                                         >
-                                            {updating === admin.id ? (
+                                            {updating === college.id ? (
                                                 <Loader2 className="w-3.5 h-3.5 animate-spin inline" />
-                                            ) : admin.status === 'Active' ? 'Deactivate' : 'Activate'}
+                                            ) : college.status === 'Active' ? 'Deactivate' : 'Activate'}
                                         </button>
                                     </td>
                                 </tr>
@@ -385,7 +374,7 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between px-6 py-4 bg-[#f8f9fb]">
-                    <p className="text-sm text-gray-500 font-medium">Showing {admins.length} of {admins.length} administrators</p>
+                    <p className="text-sm text-gray-500 font-medium">Showing {colleges.length} of {colleges.length} collegeistrators</p>
                     <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1">
                         <button className="text-[13px] font-bold text-gray-400 hover:bg-gray-50 px-4 py-1.5 rounded-lg transition-colors cursor-pointer">
                             Previous
@@ -405,7 +394,7 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                         <div className="w-8 h-8 bg-[#f47c20] rounded-full flex items-center justify-center text-white font-bold text-sm">
                             i
                         </div>
-                        <h3 className="font-black text-[#1a2b3c] text-lg tracking-tight">Quick Help: Administrator Roles</h3>
+                        <h3 className="font-black text-[#1a2b3c] text-lg tracking-tight">Quick Help: Collegeistrator Roles</h3>
                     </div>
 
                     <div className="space-y-6">
@@ -414,7 +403,7 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                                 SUPER
                             </span>
                             <div>
-                                <h4 className="font-bold text-[#1a2b3c] text-sm mb-1">Super Admin</h4>
+                                <h4 className="font-bold text-[#1a2b3c] text-sm mb-1">Super College</h4>
                                 <p className="text-sm text-gray-500 font-medium leading-relaxed">
                                     Full access to all modules, including system settings and high-level user management.
                                 </p>
@@ -442,7 +431,7 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
                     
                     <h3 className="font-black text-2xl mb-4 tracking-tight">Security Audit</h3>
                     <p className="text-[15px] text-gray-500 font-medium leading-relaxed mb-8 max-w-sm">
-                        Last system-wide security audit was completed 2 days ago. No unusual administrative activity detected.
+                        Last system-wide security audit was completed 2 days ago. No unusual collegeistrative activity detected.
                     </p>
                     
                     <button
@@ -456,10 +445,10 @@ const AdminManagement = ({ onNavigate, currentAdmin, adminData }) => {
 
             {/* Modals */}
             {showAddModal && (
-                <AddAdminModal onClose={() => setShowAddModal(false)} adminData={adminData} />
+                <AddCollegeModal onClose={() => setShowAddModal(false)} collegeData={collegeData} />
             )}
         </div>
     );
 };
 
-export default AdminManagement;
+export default CollegeManagement;

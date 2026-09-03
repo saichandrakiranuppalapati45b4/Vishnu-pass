@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, GraduationCap, Camera, ChevronDown, Loader2, X } from 'lucide-react';
-import { db, storage } from '../../config/firebase';
-import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 
 // Custom Dropdown Component (reused)
@@ -57,6 +55,12 @@ const CustomSelect = ({ label, value, options, placeholder = 'Select', onChange 
     );
 };
 
+const genderOptions = [
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+    { value: 'other', label: 'Other' },
+];
+
 const yearOptions = [
     { value: '1', label: '1st Year' },
     { value: '2', label: '2nd Year' },
@@ -73,18 +77,18 @@ const statusOptions = [
     { value: 'Inactive', label: 'Inactive' },
 ];
 
-const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
+const EditStudentModal = ({ collegeData, student, onClose, onUpdate }) => {
     const [formData, setFormData] = useState({
-        fullName: student.full_name || '',
-        studentId: student.student_id || '',
-        gender: student.gender || '',
+        fullName: student.full_name || student.name || '',
+        studentId: student.student_id || student.rollNumber || '',
+        gender: student.gender ? student.gender.toLowerCase() : 'male',
         email: student.email || '',
-        department: student.department_id || '',
-        yearOfStudy: student.year_of_study || '',
-        hostel: student.hostel_type || '',
+        department: student.department_id || student.department || '',
+        yearOfStudy: student.year_of_study || student.year || '1',
+        hostel: student.hostel_type || student.hostel || 'dayscholar',
         batch: student.batch || '2024',
-        contactNumber: student.contact_number || '',
-        status: student.status || 'Active',
+        contactNumber: student.contact_number || student.contactNumber || '',
+        status: student.status || 'Active'
     });
 
     const [departments, setDepartments] = useState([]);
@@ -96,28 +100,20 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
     const fileInputRef = useRef(null);
 
     useEffect(() => {
-        if (!adminData?.collegeId) return;
-
         const loadData = async () => {
             try {
-                const deptQuery = query(collection(db, `colleges/${adminData.collegeId}/departments`), orderBy('name'));
-                const deptSnap = await getDocs(deptQuery);
-                const depts = [];
-                deptSnap.forEach(d => depts.push({ value: d.id, label: d.data().name }));
-                setDepartments(depts);
+                const { data: depts } = await supabase.from('departments').select('*').order('name');
+                if (depts) setDepartments(depts.map(d => ({ value: d.id, label: d.name })));
 
-                const batchQuery = query(collection(db, `colleges/${adminData.collegeId}/batches`), orderBy('name'));
-                const batchSnap = await getDocs(batchQuery);
-                const bs = [];
-                batchSnap.forEach(b => bs.push({ value: b.id, label: b.data().name })); // we need to use label/name as value based on how batch is stored
-                setBatches(bs.map(b => ({ value: b.label, label: b.label }))); 
+                const { data: bs } = await supabase.from('batches').select('*').order('name');
+                if (bs) setBatches(bs.map(b => ({ value: b.name, label: b.name })));
             } catch (err) {
                 console.error("Error loading options:", err);
             }
         };
 
         loadData();
-    }, [adminData]);
+    }, []);
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -127,13 +123,16 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
         const file = e.target.files[0];
         if (file) {
             setPhotoFile(file);
-            setPhotoPreview(URL.createObjectURL(file));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPhotoPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!adminData?.collegeId) return;
 
         setError(null);
         setIsSubmitting(true);
@@ -142,19 +141,19 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
             let photoUrl = student.photo_url || student.photoUrl;
 
             if (photoFile) {
-                const fileExt = photoFile.name.split('.').pop();
-                const fileName = `student_${Date.now()}.${fileExt}`;
-                const storageRef = ref(storage, `colleges/${adminData.collegeId}/students/${fileName}`);
-                await uploadBytes(storageRef, photoFile);
-                photoUrl = await getDownloadURL(storageRef);
+                try {
+                    const studentDocId = formData.studentId.trim() || student.id || 'student_' + Date.now();
+                    const fileExt = photoFile.name.split('.').pop();
+                    const fileName = `${studentDocId}_${Date.now()}.${fileExt}`;
+                    photoUrl = await uploadFile('students', fileName, photoFile);
+                } catch (imgErr) {
+                    console.error('Photo upload failed:', imgErr);
+                }
             }
 
-            const studentRef = doc(db, `colleges/${adminData.collegeId}/students`, student.id);
-            
-            await updateDoc(studentRef, {
+            const updatedData = {
                 full_name: formData.fullName.trim(),
                 student_id: formData.studentId.trim(),
-                gender: formData.gender,
                 email: formData.email.trim(),
                 department_id: formData.department || null,
                 year_of_study: formData.yearOfStudy,
@@ -163,25 +162,31 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
                 contact_number: formData.contactNumber,
                 status: formData.status,
                 photo_url: photoUrl
-            });
+            };
+
+            const { error: updateErr } = await supabase
+                .from('students')
+                .update(updatedData)
+                .eq('id', student.id);
+
+            if (updateErr) throw updateErr;
 
             await logAuditAction({
-                action: 'Updated Student',
+                action: 'Updated Student Profile',
                 resource: formData.studentId,
                 details: {
                     name: formData.fullName,
-                    changes: {
-                        status: formData.status,
-                        department: formData.department
-                    }
+                    department: formData.department,
+                    batch: formData.batch,
+                    status: formData.status
                 }
             });
 
-            onUpdate();
+            if (onUpdate) onUpdate();
             onClose();
         } catch (err) {
-            console.error(err);
-            setError(err.message || 'Failed to update student.');
+            console.error("Error updating student:", err);
+            setError(err.message || "Failed to update student profile.");
         } finally {
             setIsSubmitting(false);
         }
@@ -248,7 +253,7 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
                                         onChange={(val) => handleChange('status', val)}
                                     />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Email</label>
                                         <input
@@ -267,6 +272,12 @@ const EditStudentModal = ({ adminData, student, onClose, onUpdate }) => {
                                             className="w-full px-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold text-gray-900 focus:ring-2 focus:ring-[#f47c20]/20"
                                         />
                                     </div>
+                                    <CustomSelect
+                                        label="Gender"
+                                        value={formData.gender}
+                                        options={genderOptions}
+                                        onChange={(val) => handleChange('gender', val)}
+                                    />
                                 </div>
                             </div>
                         </div>

@@ -4,11 +4,10 @@ import {
     RotateCcw, Calendar, User, Zap,
     AlertTriangle, FileText, Loader2, ArrowLeft
 } from 'lucide-react';
-import { db } from '../../config/firebase';
-import { collection, query, orderBy, getDocs, limit, where } from 'firebase/firestore';
+import { supabase } from '../../config/supabase';
 import { format } from 'date-fns';
 
-const ActionBadge = ({ action }) => {
+const ActionBadge = ({ action = '' }) => {
     let colors = 'bg-gray-100 text-gray-600';
     if (action.includes('Registered')) colors = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
     if (action.includes('Config')) colors = 'bg-amber-50 text-amber-600 border border-amber-100';
@@ -26,7 +25,7 @@ const ActionBadge = ({ action }) => {
     );
 };
 
-const AuditLogs = ({ onBack, adminData }) => {
+const AuditLogs = ({ onBack, collegeData }) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({
@@ -38,42 +37,39 @@ const AuditLogs = ({ onBack, adminData }) => {
 
     useEffect(() => {
         fetchLogs();
-    }, [adminData?.collegeId]);
+    }, []);
 
     const fetchLogs = async () => {
-        if (!adminData?.collegeId) return;
         setLoading(true);
         try {
-            // Fetch the last 100 logs
-            const logsRef = collection(db, `colleges/${adminData.collegeId}/audit_logs`);
-            const q = query(logsRef, orderBy('createdAt', 'desc'), limit(100));
-            const snapshot = await getDocs(q);
+            const { data, error } = await supabase
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+
+            if (error) throw error;
             
-            const fetchedLogs = [];
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                fetchedLogs.push({
-                    id: doc.id,
-                    ...data,
-                    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date()
-                });
-            });
+            const fetchedLogs = (data || []).map(d => ({
+                id: d.id,
+                ...d,
+                createdAt: d.created_at ? new Date(d.created_at) : new Date(),
+                collegeEmail: d.admin_name || 'System'
+            }));
+
             setLogs(fetchedLogs);
 
-            // Calculate Statistics locally from the recent logs (since Firestore count queries can be expensive/complex without proper indexing for `ilike`)
-            // In a production app, you might want cloud functions to maintain these counters.
-            
             const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
             const last24hLogs = fetchedLogs.filter(log => log.createdAt > yesterday);
             
-            const regCount = fetchedLogs.filter(log => log.action?.toLowerCase().includes('registered')).length;
+            const regCount = fetchedLogs.filter(log => (log.action || '').toLowerCase().includes('registered')).length;
             const configCount = fetchedLogs.filter(log => 
-                log.action?.toLowerCase().includes('config') || 
-                log.action?.toLowerCase().includes('role')
+                (log.action || '').toLowerCase().includes('config') || 
+                (log.action || '').toLowerCase().includes('role')
             ).length;
 
             setStats({
-                globalTotal: fetchedLogs.length, // approximation for UI
+                globalTotal: fetchedLogs.length,
                 total: last24hLogs.length,
                 registrations: regCount,
                 changes: configCount
@@ -132,7 +128,7 @@ const AuditLogs = ({ onBack, adminData }) => {
                         <Search className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
                         <input
                             type="text"
-                            placeholder="Search by Admin, Action, or Resource ID..."
+                            placeholder="Search by College, Action, or Resource ID..."
                             className="w-full pl-11 pr-4 py-3 bg-[#f8fafc] border border-gray-100 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#f47c20]/10 transition-all placeholder:text-gray-400"
                         />
                     </div>
@@ -145,7 +141,7 @@ const AuditLogs = ({ onBack, adminData }) => {
                         </button>
                         <button className="flex items-center gap-2 px-4 py-3 bg-[#f8fafc] border border-gray-100 rounded-2xl text-[11px] font-black text-gray-600 uppercase tracking-wider hover:bg-gray-50 transition-all cursor-pointer">
                             <User className="w-4 h-4 text-gray-400" />
-                            Admin User
+                            College User
                             <ChevronRight className="w-3 h-3 rotate-90" />
                         </button>
                         <button className="flex items-center gap-2 px-4 py-3 bg-[#f8fafc] border border-gray-100 rounded-2xl text-[11px] font-black text-gray-600 uppercase tracking-wider hover:bg-gray-50 transition-all cursor-pointer">
@@ -168,7 +164,7 @@ const AuditLogs = ({ onBack, adminData }) => {
                         <thead>
                             <tr className="border-b border-gray-50">
                                 <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">Timestamp</th>
-                                <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">Admin User</th>
+                                <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">College User</th>
                                 <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">Action</th>
                                 <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">Resource</th>
                                 <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] px-4">IP Address</th>
@@ -186,9 +182,9 @@ const AuditLogs = ({ onBack, adminData }) => {
                                     <td className="py-5 px-4 text-[13px] font-black text-gray-900">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-orange-100 text-[#f47c20] flex items-center justify-center text-[10px] font-black">
-                                                {(log.adminName || 'U').split(' ').map(n => n[0]).join('')}
+                                                {(log.collegeName || 'U').split(' ').map(n => n[0]).join('')}
                                             </div>
-                                            {log.adminName}
+                                            {log.collegeName}
                                         </div>
                                     </td>
                                     <td className="py-5 px-4">
@@ -216,7 +212,7 @@ const AuditLogs = ({ onBack, adminData }) => {
                                             </div>
                                             <h4 className="text-lg font-black text-gray-900 italic">No Audit Trails Captured</h4>
                                             <p className="text-sm text-gray-400 font-medium max-w-sm mx-auto">
-                                                Historical dummy data has been cleared. The system is now monitoring for live administrative activity.
+                                                Historical dummy data has been cleared. The system is now monitoring for live collegeistrative activity.
                                             </p>
                                         </div>
                                     </td>
