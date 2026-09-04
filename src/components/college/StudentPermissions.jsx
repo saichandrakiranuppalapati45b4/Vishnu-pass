@@ -10,17 +10,17 @@ const StudentPermissions = ({ collegeData }) => {
     const initialSettings = {
         dayscholar: {
             autoApproveOutpass: true,
-            allowLateEntry: false,
-            nightPassEnabled: false,
-            monthlyInLimit: 60,
-            monthlyOutLimit: 60
-        },
-        hosteler: {
-            autoApproveOutpass: false,
             allowLateEntry: true,
             nightPassEnabled: true,
-            monthlyInLimit: 12,
-            monthlyOutLimit: 12
+            monthlyInLimit: 100,
+            monthlyOutLimit: 100
+        },
+        hosteler: {
+            autoApproveOutpass: true,
+            allowLateEntry: true,
+            nightPassEnabled: true,
+            monthlyInLimit: 100,
+            monthlyOutLimit: 100
         }
     };
 

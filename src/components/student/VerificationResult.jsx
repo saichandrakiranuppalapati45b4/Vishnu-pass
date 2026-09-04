@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { domToPng } from 'modern-screenshot';
 import DailyDigitalPass from './DailyDigitalPass';
 
-const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, warning, status, hideNavBar = false }) => {
+const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, warning, status, hideNavBar = false, customError }) => {
     const [isAcknowledged, setIsAcknowledged] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [localPhotoUrl, setLocalPhotoUrl] = useState(null);
@@ -15,8 +15,6 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
         const loadPhoto = async () => {
             if (!studentData?.photo_url) return;
             try {
-                // Firebase Storage URLs are public and can be fetched directly.
-                // Depending on the CORS configuration of the Firebase Storage bucket, this will succeed.
                 const res = await fetch(studentData.photo_url);
                 if (!res.ok) throw new Error("Fetch failed");
                 const blob = await res.blob();
@@ -65,19 +63,20 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
         }
     };
 
-    // Senior Logic: Real-time Expiration & Usage Validation
-    const currentTime = new Date();
-    const expiryHour = 17; // 05:00 PM
-    const isPastTime = currentTime.getHours() >= expiryHour;
+    // Real-time Expiration & Usage Validation
+    const isStudentInactive = studentData?.status && ['inactive', 'suspended', 'blocked'].includes(String(studentData.status).toLowerCase());
     
-    // Status-based expiration (if guard marks as exit/out or already used)
-    const isUsageExpired = status && ['exit', 'out', 'used', 'expired', 'completed', 'denied'].includes(status.toLowerCase());
-    
-    // The final authoritative expired state
-    const isExpired = isPastTime || isUsageExpired;
+    // Status-based expiration (only when explicitly expired or student account inactive)
+    const isExpired = Boolean(
+        isStudentInactive ||
+        (status && ['expired'].includes(status.toLowerCase()))
+    );
 
-    // Consider 'rejected', 'denied', 'cancelled', 'expired', 'error' as failure statuses
-    const isDenied = status && ['rejected', 'denied', 'cancelled', 'error'].includes(status.toLowerCase()) && !isExpired;
+    // Denied status
+    const isDenied = Boolean(
+        customError ||
+        (status && ['rejected', 'denied', 'cancelled', 'error'].includes(status.toLowerCase()) && !isExpired)
+    );
 
     useEffect(() => {
         if (warning && !isAcknowledged) {
@@ -176,7 +175,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                                 ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 shadow-rose-500/10' 
                                 : String(studentData?.hostel_type).toLowerCase().includes('dayscholar') 
                                     ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 shadow-blue-500/10' 
-                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-600 shadow-rose-500/10'
+                                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-emerald-500/10'
                         }`}>
                             {isExpired ? 'Expired VID' : isDenied ? 'Denied' : String(studentData?.hostel_type).toLowerCase().includes('dayscholar') ? 'Dayscholar' : 'Hosteller'}
                         </div>
@@ -186,7 +185,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                                 ? 'border-rose-100 shadow-rose-500/20 ring-4 ring-rose-500/10' 
                                 : String(studentData?.hostel_type).toLowerCase().includes('dayscholar') 
                                     ? 'border-blue-100 shadow-blue-500/20 ring-4 ring-blue-500/10' 
-                                    : 'border-[#a6cc39]/20 shadow-[#a6cc39]/20 ring-4 ring-[#a6cc39]/10'
+                                    : 'border-emerald-100 shadow-emerald-500/20 ring-4 ring-emerald-500/10'
                         }`}>
                             {studentData?.photo_url ? (
                                 <img src={studentData.photo_url} alt="Profile" className={`w-full h-full object-cover ${isExpired ? 'grayscale-[0.3]' : ''}`} />
@@ -203,8 +202,8 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                         </div>
                     </div>
 
-                    <h1 className="text-3xl font-black text-[#1a2b3c] tracking-tight">{studentData?.full_name || 'Rahul Sharma'}</h1>
-                    <p className="text-slate-400 font-bold tracking-wide mt-1">Student ID: {studentData?.student_id || 'VP-2023-8842'}</p>
+                    <h1 className="text-3xl font-black text-[#1a2b3c] tracking-tight">{studentData?.full_name || 'Student Name'}</h1>
+                    <p className="text-slate-400 font-bold tracking-wide mt-1">Student ID: {studentData?.student_id || 'ID'}</p>
                 </div>
 
                 {/* Status Card */}
@@ -223,8 +222,8 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                         </h3>
                         <p className="text-slate-500 text-xs font-bold">
                             {isExpired 
-                                ? (isPastTime ? 'Valid only until 05:00 PM' : 'Pass has been used/exited') 
-                                : isDenied ? 'Request was rejected by guard' 
+                                ? 'Pass has expired or student is inactive'
+                                : isDenied ? (customError || 'Request was rejected or denied') 
                                 : warning ? warning 
                                 : 'Access Authorized for Entry'}
                         </p>
@@ -237,7 +236,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                                 : 'bg-[#a6cc39] shadow-[#a6cc39]/20'
                     } text-white px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase shadow-lg`}>
                         {isExpired || isDenied ? <XCircle className="w-4 h-4" /> : warning ? <Zap className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                        {isExpired ? 'Expired' : isDenied ? 'Denied' : warning ? 'Alert' : 'Green'}
+                        {isExpired ? 'Expired' : isDenied ? 'Denied' : warning ? 'Alert' : 'Valid'}
                     </div>
                 </div>
 
@@ -285,7 +284,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                             </div>
                             <div className="col-span-2 bg-[#f8f9fb] p-4 rounded-2xl">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Valid Until</p>
-                                <p className="text-[11px] font-black text-[#1a2b3c]">05:00 PM, {format(new Date(), 'dd MMM yyyy')}</p>
+                                <p className="text-[11px] font-black text-[#1a2b3c]">11:59 PM, {format(new Date(), 'dd MMM yyyy')}</p>
                             </div>
                         </div>
 

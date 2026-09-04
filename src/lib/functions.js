@@ -94,16 +94,68 @@ export const createStudentAccount = async (studentData) => {
 };
 
 /**
- * Create a guard record in Supabase
+ * Register or update a guard account with Supabase Auth credentials and database record
+ */
+export const registerGuardAccount = async (guardData) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('create-guard-user', {
+      body: guardData,
+    });
+
+    if (error) {
+      const errorMsg = data?.error || error.message || 'Failed to register guard authentication credentials';
+      throw new Error(errorMsg);
+    }
+
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
+    return { data: data?.guard || data };
+  } catch (err) {
+    console.error('Error in registerGuardAccount:', err);
+    throw err;
+  }
+};
+
+/**
+ * Delete a guard account from both database and Supabase Auth
+ */
+export const deleteGuardAccount = async ({ id, employeeId, email }) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-guard-user', {
+      body: { id, employeeId, email },
+    });
+
+    if (error) {
+      const errorMsg = data?.error || error.message || 'Failed to delete guard authentication credentials';
+      throw new Error(errorMsg);
+    }
+
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
+    return { data };
+  } catch (err) {
+    console.error('Error in deleteGuardAccount via function:', err);
+    // Fallback: delete directly from DB
+    if (id) {
+      const { error: dbErr } = await supabase.from('guards').delete().eq('id', id);
+      if (dbErr) throw dbErr;
+    } else if (employeeId) {
+      const { error: dbErr } = await supabase.from('guards').delete().eq('employee_id', employeeId);
+      if (dbErr) throw dbErr;
+    }
+    return { data: { success: true } };
+  }
+};
+
+/**
+ * Create a guard record in Supabase (legacy fallback)
  */
 export const createGuardAccount = async (guardData) => {
-  const { data, error } = await supabase
-    .from('guards')
-    .insert([guardData])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return { data };
+  return registerGuardAccount(guardData);
 };
+
 

@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
     ChevronLeft, User, GraduationCap, Mail, Phone, MapPin,
     Calendar, Shield, Clock, ArrowUpRight, Loader2,
-    CalendarDays, Hash, BadgeCheck, Building
+    CalendarDays, Hash, BadgeCheck, Building, Eye
 } from 'lucide-react';
 import { supabase } from '../../config/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
+import VerificationResult from '../student/VerificationResult';
 
 const StatusBadge = ({ status }) => {
     const styles = {
@@ -37,6 +38,8 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
     const [student, setStudent] = useState(null);
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showPassCard, setShowPassCard] = useState(false);
+    const [selectedLogForPass, setSelectedLogForPass] = useState(null);
 
     useEffect(() => {
         if (studentId) fetchData();
@@ -208,7 +211,10 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                     </div>
 
                     {/* Quick Access ID / Pass Preview Placeholder */}
-                    <div className="bg-white rounded-[32px] p-6 text-gray-900 border border-gray-100 overflow-hidden relative group cursor-pointer shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+                    <div 
+                        onClick={() => setShowPassCard(true)}
+                        className="bg-white rounded-[32px] p-6 text-gray-900 border border-gray-100 overflow-hidden relative group cursor-pointer shadow-[0_4px_20px_rgba(0,0,0,0.02)] active:scale-[0.99] transition-all"
+                    >
                         <div className="absolute top-0 right-0 w-32 h-32 bg-orange-50/50 rounded-full -translate-y-16 translate-x-16 blur-2xl group-hover:bg-orange-100/50 transition-all" />
                         <div className="relative z-10">
                             <div className="flex items-center justify-between mb-8">
@@ -220,7 +226,7 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                             <h3 className="text-lg font-black mb-1">Digital Identity Pass</h3>
                             <p className="text-gray-400 text-xs font-medium mb-6 uppercase tracking-widest">VP-SECURED-SYSTEM</p>
                             <div className="bg-gray-50 rounded-2xl p-4 flex items-center justify-center border border-gray-100 group-hover:border-orange-200 transition-colors">
-                                <p className="text-sm font-bold text-gray-600 group-hover:text-[#f47c20]">View Active Pass QR Code</p>
+                                <p className="text-sm font-bold text-gray-600 group-hover:text-[#f47c20]">View Digital Pass Card</p>
                                 <ArrowUpRight className="w-4 h-4 ml-2 text-[#f47c20]" />
                             </div>
                         </div>
@@ -261,7 +267,7 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                                 <Clock className="w-5 h-5 text-[#f47c20]" />
                                 <h3 className="font-bold text-gray-900">Recent Movement History</h3>
                             </div>
-                            <span className="text-xs font-bold text-gray-400 tracking-wider">LATEST 10 RECORDS</span>
+                            <span className="text-xs font-bold text-gray-400 tracking-wider">CLICK TO VIEW PASS</span>
                         </div>
                         <div className="p-0 overflow-x-auto">
                             <table className="w-full text-left text-sm">
@@ -271,27 +277,45 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                                         <th className="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Activity</th>
                                         <th className="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Datetime</th>
                                         <th className="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Time Ago</th>
+                                        <th className="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {logs.length === 0 ? (
                                         <tr>
-                                            <td colSpan="4" className="px-8 py-12 text-center text-gray-400 font-bold">
+                                            <td colSpan="5" className="px-8 py-12 text-center text-gray-400 font-bold">
                                                 No movement records detected for this student.
                                             </td>
                                         </tr>
                                     ) : (
                                         logs.map((log) => (
-                                            <tr key={log.id} className="hover:bg-gray-50/30 transition-colors">
-                                                <td className="px-8 py-4 font-bold text-gray-900">{log.gateName || log.gateId || 'Gate 1'}</td>
+                                            <tr 
+                                                key={log.id} 
+                                                onClick={() => {
+                                                    setSelectedLogForPass(log);
+                                                    setShowPassCard(true);
+                                                }}
+                                                className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                                            >
+                                                <td className="px-8 py-4 font-bold text-gray-900 group-hover:text-[#f47c20] transition-colors">{log.gateName || log.gateId || log.gate_id || 'Gate 1'}</td>
                                                 <td className="px-8 py-4">
-                                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${log.movementType === 'IN' || log.movementType === 'AUTHORIZED' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
+                                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${log.movementType === 'IN' || log.movementType === 'AUTHORIZED' || log.movement_type === 'IN' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
                                                         }`}>
-                                                        {log.movementType || 'AUTHORIZED'}
+                                                        {log.movementType || log.movement_type || 'AUTHORIZED'}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-4 text-gray-500 font-medium">{log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'dd MMM, hh:mm a') : 'N/A'}</td>
-                                                <td className="px-8 py-4 text-[#f47c20] font-bold">{log.scannedAt?.toDate ? formatDistanceToNow(log.scannedAt.toDate(), { addSuffix: true }) : 'N/A'}</td>
+                                                <td className="px-8 py-4 text-gray-500 font-medium">
+                                                    {log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'dd MMM, hh:mm a') : log.created_at ? format(new Date(log.created_at), 'dd MMM, hh:mm a') : 'N/A'}
+                                                </td>
+                                                <td className="px-8 py-4 text-[#f47c20] font-bold">
+                                                    {log.scannedAt?.toDate ? formatDistanceToNow(log.scannedAt.toDate(), { addSuffix: true }) : log.created_at ? formatDistanceToNow(new Date(log.created_at), { addSuffix: true }) : 'N/A'}
+                                                </td>
+                                                <td className="px-8 py-4 text-right">
+                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f47c20] bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100 group-hover:bg-[#f47c20] group-hover:text-white transition-all">
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                        Pass
+                                                    </span>
+                                                </td>
                                             </tr>
                                         ))
                                     )}
@@ -301,6 +325,40 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Verification / Pass Card Slide-over */}
+            {showPassCard && (
+                <div 
+                    className="fixed inset-0 z-[100] flex justify-end bg-black/50 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in"
+                    onClick={() => {
+                        setShowPassCard(false);
+                        setSelectedLogForPass(null);
+                    }}
+                >
+                    <div 
+                        className="w-[480px] max-w-full bg-white h-full shadow-2xl animate-in slide-in-from-right duration-300 overflow-y-auto relative flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <VerificationResult 
+                            studentData={{
+                                ...student,
+                                full_name: student?.full_name || student?.name,
+                                student_id: student?.student_id || student?.rollNumber,
+                                departments: student?.departments || { name: student?.department || 'Computer Science Engineering' }
+                            }}
+                            gateName={selectedLogForPass?.gateName || selectedLogForPass?.gateId || selectedLogForPass?.gate_id || 'Main Campus Gate'}
+                            verifiedAt={selectedLogForPass?.created_at ? format(new Date(selectedLogForPass.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a')}
+                            onNextScan={() => {
+                                setShowPassCard(false);
+                                setSelectedLogForPass(null);
+                            }}
+                            warning={selectedLogForPass?.warning}
+                            status={selectedLogForPass?.status}
+                            hideNavBar={true}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

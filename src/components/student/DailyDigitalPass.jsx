@@ -28,7 +28,7 @@ const DailyDigitalPass = React.forwardRef(({ studentData, gateName, verifiedAt, 
     }
 
     const todayDate = format(new Date(), 'dd MMM yyyy');
-    const expiryTime = "05:00 PM";
+    const expiryTime = "11:59 PM";
 
     return (
         <div ref={ref} className="w-[400px] bg-white p-8 flex flex-col items-center relative overflow-hidden" style={{ borderRadius: '56px' }}>

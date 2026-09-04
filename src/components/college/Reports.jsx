@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronDown, TrendingUp, Clock, ArrowUpRight, Loader2 } from 'lucide-react';
+import { ChevronDown, TrendingUp, Clock, ArrowUpRight, Loader2, X, Filter, Search, Eye, ShieldCheck, ChevronRight } from 'lucide-react';
 import { supabase } from '../../config/supabase';
 import { formatDistanceToNow, format } from 'date-fns';
+import VerificationResult from '../student/VerificationResult';
 
 // Helper function to generate a consistent color from a name
 const stringToColor = (name) => {
@@ -51,6 +52,89 @@ const Reports = ({ collegeData }) => {
     const [dateRange, setDateRange] = useState(7); // default 7 days
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [allLogsState, setAllLogsState] = useState([]);
+
+    // Pass Card and Modal State
+    const [selectedLog, setSelectedLog] = useState(null);
+    const [loadingStudentData, setLoadingStudentData] = useState(false);
+    const [isViewAllOpen, setIsViewAllOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterCategory, setFilterCategory] = useState('ALL');
+    const [showFilterPills, setShowFilterPills] = useState(false);
+
+    // Handle clicking a log to view their Pass Card
+    const handleLogClick = async (log) => {
+        if (!log) return;
+        setSelectedLog({ ...log, studentData: null });
+        setLoadingStudentData(true);
+
+        try {
+            const sId = log.student_id || log.studentId || log.user_name;
+            let studentData = null;
+
+            if (sId) {
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
+                let query = supabase.from('students').select('*, departments(name)');
+                if (isUuid) {
+                    query = query.or(`id.eq.${sId},student_id.eq.${sId}`);
+                } else {
+                    query = query.or(`student_id.eq.${sId},student_id.ilike.${sId}`);
+                }
+                const { data } = await query.maybeSingle();
+                studentData = data;
+            }
+
+            if (!studentData && (log.user_name || log.studentName)) {
+                const nameSearch = log.user_name || log.studentName;
+                const { data } = await supabase
+                    .from('students')
+                    .select('*, departments(name)')
+                    .or(`full_name.ilike.${nameSearch},email.ilike.${nameSearch}`)
+                    .maybeSingle();
+                studentData = data;
+            }
+
+            if (studentData) {
+                setSelectedLog({
+                    ...log,
+                    studentData: {
+                        ...studentData,
+                        full_name: studentData.full_name || log.studentName || log.user_name || 'Student',
+                        student_id: studentData.student_id || log.studentId || sId,
+                        departments: studentData.departments || { name: studentData.department || 'Computer Science Engineering' }
+                    }
+                });
+            } else {
+                setSelectedLog({
+                    ...log,
+                    studentData: {
+                        full_name: log.studentName || log.user_name || 'Student',
+                        student_id: log.studentId || log.student_id || sId || '24pa1a45b4',
+                        departments: { name: 'Computer Science Engineering' },
+                        photo_url: log.photoUrl || null,
+                        year_of_study: '3',
+                        batch: '2024-2028',
+                        campus: 'Main Campus',
+                        hostel_type: 'Day Scholar',
+                        status: 'Active'
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Error loading pass details:", err);
+            setSelectedLog({
+                ...log,
+                studentData: {
+                    full_name: log.studentName || log.user_name || 'Student',
+                    student_id: log.studentId || log.student_id || '24pa1a45b4',
+                    departments: { name: 'Computer Science Engineering' },
+                    photo_url: log.photoUrl || null,
+                    status: 'Active'
+                }
+            });
+        } finally {
+            setLoadingStudentData(false);
+        }
+    };
 
     const fetchReports = async () => {
         try {
@@ -436,80 +520,370 @@ const Reports = ({ collegeData }) => {
                 </div>
             </div>
 
-            {/* Recent Logs */}
+            {/* Recent Logs Header & Controls */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-                <div className="p-5 border-b border-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-900 text-[15px]">Recent Logs</h3>
+                <div className="p-5 border-b border-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h3 className="font-bold text-gray-900 text-[15px] flex items-center gap-2">
+                            Recent Logs
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-50 text-[#f47c20] border border-orange-100">
+                                Click any row to view Pass Card
+                            </span>
+                        </h3>
+                    </div>
                     <div className="flex items-center gap-3">
-                        <button className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors cursor-pointer">Filter</button>
-                        <button className="text-sm font-semibold text-[#f47c20] hover:text-[#d96a18] transition-colors cursor-pointer">View All</button>
+                        <button 
+                            onClick={() => setShowFilterPills(prev => !prev)}
+                            className={`text-sm font-medium px-3 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                showFilterPills || filterCategory !== 'ALL'
+                                    ? 'bg-orange-50 border-orange-200 text-[#f47c20]'
+                                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            <Filter className="w-3.5 h-3.5" />
+                            Filter {filterCategory !== 'ALL' ? `(${filterCategory})` : ''}
+                        </button>
+                        <button 
+                            onClick={() => setIsViewAllOpen(true)}
+                            className="text-sm font-semibold px-3 py-1.5 rounded-xl bg-orange-500 hover:bg-[#d96a18] text-white transition-all cursor-pointer shadow-sm active:scale-95"
+                        >
+                            View All ({allLogsState.length})
+                        </button>
                     </div>
                 </div>
-                <table className="w-full text-left text-sm">
-                    <thead>
-                        <tr className="border-b border-gray-100">
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">User Details</th>
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Access Point</th>
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Type</th>
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {logs.map((log) => (
-                            <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        {log.photoUrl ? (
-                                            <img
-                                                src={log.photoUrl}
-                                                alt={log.studentName || 'Student'}
-                                                className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-gray-100 shadow-sm"
-                                            />
-                                        ) : (
-                                            <div
-                                                className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                                style={{ backgroundColor: stringToColor(log.studentName || 'U') }}
-                                            >
-                                                {(log.studentName || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                                            </div>
-                                        )}
-                                        <div>
-                                            <p className="font-semibold text-gray-900 text-sm">{log.studentName || 'Guest'}</p>
-                                            <p className="text-xs text-gray-400 font-medium">{log.studentId ? `ID: #${log.studentId}` : 'Guest'}</p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-600 font-medium">{log.gateId || 'Gate'}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${(log.movementType?.toUpperCase() === 'IN' || log.movementType?.toUpperCase() === 'ENTRY') ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-                                        {log.movementType || 'N/A'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    {(() => {
-                                        const s = (log.status || '').toLowerCase();
-                                        const type = (log.movementType || '').toUpperCase();
-                                        const isAuth = ['success', 'completed', 'approved'].includes(s) || (s === 'expired' && type === 'OUT');
-                                        const isDenied = ['rejected', 'denied', 'error'].includes(s) || (s === 'expired' && type === 'IN');
-                                        
-                                        return (
-                                            <span className={`text-sm font-semibold ${isAuth ? 'text-emerald-600' : 'text-rose-600'} flex items-center gap-1.5`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${isAuth ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                                                {isAuth ? (s === 'expired' ? 'Checked Out' : 'Authorized') : 
-                                                 isDenied ? 'Access Denied' : log.status}
-                                            </span>
-                                        );
-                                    })()}
-                                </td>
-                                <td className="px-6 py-4 text-gray-500 font-medium text-xs whitespace-nowrap">
-                                    {format(log.scannedAtDate, 'MMM d, yyyy h:mm a')}
-                                </td>
-                            </tr>
+
+                {/* Filter Pills */}
+                {showFilterPills && (
+                    <div className="px-5 py-3 bg-gray-50/70 border-b border-gray-100 flex flex-wrap items-center gap-2 animate-in fade-in duration-200">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2">Filter By:</span>
+                        {[
+                            { label: 'All Logs', val: 'ALL' },
+                            { label: 'Entry (IN)', val: 'IN' },
+                            { label: 'Exit (OUT)', val: 'OUT' },
+                            { label: 'Authorized', val: 'AUTHORIZED' },
+                            { label: 'Access Denied', val: 'DENIED' }
+                        ].map(f => (
+                            <button
+                                key={f.val}
+                                onClick={() => setFilterCategory(f.val)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    filterCategory === f.val
+                                        ? 'bg-[#f47c20] text-white shadow-sm'
+                                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
                         ))}
-                    </tbody>
-                </table>
+                    </div>
+                )}
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-100 bg-gray-50/40">
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">User Details</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Access Point</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Type</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Timestamp</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {(() => {
+                                const filteredLogs = logs.filter(l => {
+                                    if (filterCategory === 'ALL') return true;
+                                    const cat = getAccessCategory(l);
+                                    const type = (l.movement_type || l.movementType || '').toUpperCase();
+                                    if (filterCategory === 'IN') return type === 'IN' || type === 'ENTRY';
+                                    if (filterCategory === 'OUT') return type === 'OUT' || type === 'EXIT';
+                                    if (filterCategory === 'AUTHORIZED') return cat === 'AUTHORIZED';
+                                    if (filterCategory === 'DENIED') return cat === 'ACCESS DENIED';
+                                    return true;
+                                });
+
+                                if (filteredLogs.length === 0) {
+                                    return (
+                                        <tr>
+                                            <td colSpan="6" className="px-6 py-12 text-center text-gray-400 font-medium">
+                                                No logs match the selected filter.
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                return filteredLogs.map((log) => (
+                                    <tr 
+                                        key={log.id} 
+                                        onClick={() => handleLogClick(log)}
+                                        className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                                        title="Click to view digital pass card"
+                                    >
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                {log.photoUrl ? (
+                                                    <img
+                                                        src={log.photoUrl}
+                                                        alt={log.studentName || 'Student'}
+                                                        className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-gray-100 shadow-sm group-hover:scale-105 transition-transform"
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 group-hover:scale-105 transition-transform"
+                                                        style={{ backgroundColor: stringToColor(log.studentName || 'U') }}
+                                                    >
+                                                        {(log.studentName || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <p className="font-semibold text-gray-900 text-sm group-hover:text-[#f47c20] transition-colors flex items-center gap-1.5">
+                                                        {log.studentName || 'Guest'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 font-medium">{log.studentId ? `ID: #${log.studentId}` : 'Guest'}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600 font-medium">{log.gateId || log.gate_id || 'Gate'}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${(log.movementType?.toUpperCase() === 'IN' || log.movementType?.toUpperCase() === 'ENTRY') ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                                                {log.movementType || log.movement_type || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {(() => {
+                                                const s = (log.status || '').toLowerCase();
+                                                const type = (log.movementType || log.movement_type || '').toUpperCase();
+                                                const isAuth = ['success', 'completed', 'approved'].includes(s) || (s === 'expired' && type === 'OUT');
+                                                const isDenied = ['rejected', 'denied', 'error'].includes(s) || (s === 'expired' && type === 'IN');
+                                                
+                                                return (
+                                                    <span className={`text-sm font-semibold ${isAuth ? 'text-emerald-600' : 'text-rose-600'} flex items-center gap-1.5`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${isAuth ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                                                        {isAuth ? (s === 'expired' ? 'Checked Out' : 'Authorized') : 
+                                                         isDenied ? 'Access Denied' : log.status}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-500 font-medium text-xs whitespace-nowrap">
+                                            {format(log.scannedAtDate, 'MMM d, yyyy h:mm a')}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f47c20] bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100 group-hover:bg-[#f47c20] group-hover:text-white transition-all shadow-xs">
+                                                <Eye className="w-3.5 h-3.5" />
+                                                Pass
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ));
+                            })()}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            {/* View All Logs Modal */}
+            {isViewAllOpen && (
+                <div 
+                    className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={() => setIsViewAllOpen(false)}
+                >
+                    <div 
+                        className="bg-white rounded-3xl w-full max-w-5xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                            <div>
+                                <h2 className="text-xl font-black text-gray-900 tracking-tight">All Access & Movement Logs</h2>
+                                <p className="text-xs text-gray-500 font-medium mt-0.5">
+                                    Total {allLogsState.length} access records logged. Click any entry to view their verified digital pass.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsViewAllOpen(false)}
+                                className="w-10 h-10 rounded-full bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-900 transition-colors cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Search & Filter Bar */}
+                        <div className="px-6 py-4 bg-gray-50/70 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                            <div className="relative w-full sm:w-80">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    placeholder="Search student ID, name, gate..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:border-[#f47c20] shadow-2xs"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+                                {['ALL', 'IN', 'OUT', 'AUTHORIZED', 'DENIED'].map(c => (
+                                    <button
+                                        key={c}
+                                        onClick={() => setFilterCategory(c)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                            filterCategory === c
+                                                ? 'bg-[#f47c20] text-white shadow-xs'
+                                                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                        }`}
+                                    >
+                                        {c}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modal Table Content */}
+                        <div className="flex-1 overflow-y-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-100 bg-gray-50/50 sticky top-0 z-5">
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">User Details</th>
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Access Point</th>
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Type</th>
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Timestamp</th>
+                                        <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Pass Card</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {(() => {
+                                        const query = searchQuery.trim().toLowerCase();
+                                        const filteredAll = allLogsState.filter(l => {
+                                            const matchesSearch = !query || 
+                                                (l.studentName || '').toLowerCase().includes(query) ||
+                                                (l.studentId || '').toLowerCase().includes(query) ||
+                                                (l.gateId || l.gate_id || '').toLowerCase().includes(query) ||
+                                                (l.user_name || '').toLowerCase().includes(query);
+                                            
+                                            if (!matchesSearch) return false;
+                                            if (filterCategory === 'ALL') return true;
+                                            
+                                            const cat = getAccessCategory(l);
+                                            const type = (l.movement_type || l.movementType || '').toUpperCase();
+                                            if (filterCategory === 'IN') return type === 'IN' || type === 'ENTRY';
+                                            if (filterCategory === 'OUT') return type === 'OUT' || type === 'EXIT';
+                                            if (filterCategory === 'AUTHORIZED') return cat === 'AUTHORIZED';
+                                            if (filterCategory === 'DENIED') return cat === 'ACCESS DENIED';
+                                            return true;
+                                        });
+
+                                        if (filteredAll.length === 0) {
+                                            return (
+                                                <tr>
+                                                    <td colSpan="6" className="px-6 py-16 text-center text-gray-400 font-medium">
+                                                        No logs found matching "{searchQuery}"
+                                                    </td>
+                                                </tr>
+                                            );
+                                        }
+
+                                        return filteredAll.map((log) => (
+                                            <tr 
+                                                key={log.id}
+                                                onClick={() => handleLogClick(log)}
+                                                className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                                            >
+                                                <td className="px-6 py-3.5">
+                                                    <div className="flex items-center gap-3">
+                                                        {log.photoUrl ? (
+                                                            <img
+                                                                src={log.photoUrl}
+                                                                alt={log.studentName || 'Student'}
+                                                                className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-gray-100 shadow-xs"
+                                                            />
+                                                        ) : (
+                                                            <div
+                                                                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
+                                                                style={{ backgroundColor: stringToColor(log.studentName || 'U') }}
+                                                            >
+                                                                {(log.studentName || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <p className="font-semibold text-gray-900 text-xs group-hover:text-[#f47c20] transition-colors">
+                                                                {log.studentName || 'Guest'}
+                                                            </p>
+                                                            <p className="text-[11px] text-gray-400 font-medium">{log.studentId ? `ID: #${log.studentId}` : 'Guest'}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-3.5 text-gray-600 font-medium text-xs">{log.gateId || log.gate_id || 'Gate'}</td>
+                                                <td className="px-6 py-3.5">
+                                                    <span className={`inline-flex px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded ${(log.movementType?.toUpperCase() === 'IN' || log.movementType?.toUpperCase() === 'ENTRY') ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                                                        {log.movementType || log.movement_type || 'N/A'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-3.5">
+                                                    {(() => {
+                                                        const s = (log.status || '').toLowerCase();
+                                                        const type = (log.movementType || log.movement_type || '').toUpperCase();
+                                                        const isAuth = ['success', 'completed', 'approved'].includes(s) || (s === 'expired' && type === 'OUT');
+                                                        const isDenied = ['rejected', 'denied', 'error'].includes(s) || (s === 'expired' && type === 'IN');
+                                                        
+                                                        return (
+                                                            <span className={`text-xs font-semibold ${isAuth ? 'text-emerald-600' : 'text-rose-600'} flex items-center gap-1.5`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${isAuth ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                                                                {isAuth ? (s === 'expired' ? 'Checked Out' : 'Authorized') : 
+                                                                 isDenied ? 'Access Denied' : log.status}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </td>
+                                                <td className="px-6 py-3.5 text-gray-500 font-medium text-xs whitespace-nowrap">
+                                                    {format(log.scannedAtDate, 'MMM d, yyyy h:mm a')}
+                                                </td>
+                                                <td className="px-6 py-3.5 text-right">
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#f47c20] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-100 group-hover:bg-[#f47c20] group-hover:text-white transition-all">
+                                                        <Eye className="w-3 h-3" />
+                                                        View Pass
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ));
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Verification Result / Pass Card Slide-over Drawer */}
+            {selectedLog && (
+                <div 
+                    className="fixed inset-0 z-[100] flex justify-end bg-black/50 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in"
+                    onClick={() => setSelectedLog(null)}
+                >
+                    <div 
+                        className="w-[480px] max-w-full bg-white h-full shadow-2xl animate-in slide-in-from-right duration-300 overflow-y-auto relative flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {loadingStudentData ? (
+                            <div className="flex justify-center flex-col items-center h-full gap-4 p-8">
+                                <Loader2 className="w-12 h-12 text-[#f47c20] animate-spin" />
+                                <p className="text-gray-700 font-bold text-sm tracking-wide uppercase">Retrieving Pass Card...</p>
+                            </div>
+                        ) : (
+                            <VerificationResult 
+                                studentData={selectedLog.studentData}
+                                gateName={selectedLog.gateId || selectedLog.gate_id || 'Main Gate'}
+                                verifiedAt={selectedLog.created_at ? format(new Date(selectedLog.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a')}
+                                onNextScan={() => setSelectedLog(null)}
+                                warning={selectedLog.warning}
+                                status={selectedLog.status}
+                                hideNavBar={true}
+                            />
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

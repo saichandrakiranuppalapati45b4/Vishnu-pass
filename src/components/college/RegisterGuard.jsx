@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Camera, ChevronDown, Loader2 } from 'lucide-react';
 import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
+import { registerGuardAccount } from '../../lib/functions';
 
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -86,36 +87,21 @@ const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
                 photoUrl = await uploadFile('guards', fileName, photoFile);
             }
 
-            const guardPayload = {
-                full_name: formData.fullName.trim(),
-                employee_id: formData.employeeId.trim(),
+            // 2. Auth & Database Record via registerGuardAccount
+            await registerGuardAccount({
+                id: initialData?.id,
                 email: formData.email.trim(),
-                contact_number: formData.contactNumber.trim(),
-                gate_id: formData.assignedGate || null,
-                shift_id: formData.shiftType || null,
-                emergency_contact_name: formData.emergencyName.trim(),
-                emergency_contact_number: formData.emergencyContact.trim(),
-                photo_url: photoUrl
-            };
-
-            // 2. Auth & Database Record
-            if (isEditMode) {
-                const { error: updateErr } = await supabase
-                    .from('guards')
-                    .update(guardPayload)
-                    .eq('id', initialData.id);
-
-                if (updateErr) throw updateErr;
-            } else {
-                const { error: insertErr } = await supabase
-                    .from('guards')
-                    .insert([{
-                        ...guardPayload,
-                        status: 'Active'
-                    }]);
-
-                if (insertErr) throw insertErr;
-            }
+                password: formData.password,
+                fullName: formData.fullName.trim(),
+                employeeId: formData.employeeId.trim(),
+                contactNumber: formData.contactNumber.trim(),
+                gateId: formData.assignedGate || null,
+                shiftId: formData.shiftType || null,
+                emergencyName: formData.emergencyName.trim(),
+                emergencyContact: formData.emergencyContact.trim(),
+                photoUrl: photoUrl,
+                isEditMode: isEditMode
+            });
 
             // 3. Log the action
             await logAuditAction({
