@@ -4,6 +4,7 @@ import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/college/Dashboard';
 import StudentDashboard from './components/student/StudentDashboard';
 import GuardDashboard from './components/guard/GuardDashboard';
+import VisitorPassView from './components/visitor/VisitorPassView';
 import { useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { supabase } from './config/supabase';
@@ -72,6 +73,19 @@ function App() {
       </p>
     </div>
   );
+
+  // Public Visitor Pass Route (Accessible via QR scan without login)
+  const isVisitorPassRoute = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/visitor-pass') ||
+    window.location.pathname.startsWith('/pass/visitor') ||
+    window.location.search.includes('visitor_pass') ||
+    window.location.search.includes('data=') ||
+    window.location.search.includes('pass_id=')
+  );
+
+  if (isVisitorPassRoute) {
+    return <VisitorPassView />;
+  }
 
   if (showSplash) {
     return <SplashScreen onFinish={handleSplashFinish} branding={branding} />;
