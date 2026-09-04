@@ -60,7 +60,7 @@ const GuardProfile = ({ guardData, onLogout, onNavigate }) => {
                 <div className="w-full grid grid-cols-2 gap-4 mb-4">
                     <div className="bg-white p-5 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-50 flex flex-col items-center text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{t('guard.profile.assignedGate')}</p>
-                        <p className="text-base font-black text-[#f47c20]">{guardData?.guard_gates?.name || 'Gate A-12'}</p>
+                        <p className="text-base font-black text-[#f47c20]">{guardData?.gate_name || guardData?.guard_gates?.name || 'Main Campus Gate'}</p>
                     </div>
                     <div className="bg-white p-5 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-50 flex flex-col items-center text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{t('guard.profile.shiftStatus')}</p>

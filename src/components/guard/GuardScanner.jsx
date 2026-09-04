@@ -63,7 +63,7 @@ const GuardScanner = ({ guardData, onBack }) => {
         return (
             <VerificationResult 
                 studentData={scanResult.student || { full_name: 'Unknown', student_id: 'Unknown' }}
-                gateName={guardData?.guard_gates?.name || 'Gate'}
+                gateName={guardData?.gate_name || guardData?.guard_gates?.name || 'Main Campus Gate'}
                 verifiedAt={scanResult.verifiedAt}
                 onNextScan={() => {
                     setScanResult(null);

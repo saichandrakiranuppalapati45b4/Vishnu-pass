@@ -55,6 +55,50 @@ const GuardHome = ({ guardData }) => {
     const [visitorQrModal, setVisitorQrModal] = useState(null);
     const [copiedUrl, setCopiedUrl] = useState(false);
 
+    const isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
+    // Human-friendly gate name resolution (Prevents displaying raw UUIDs)
+    const [resolvedGateName, setResolvedGateName] = useState(() => {
+        if (guardData?.guard_gates?.name) return guardData.guard_gates.name;
+        if (guardData?.gate_name) return guardData.gate_name;
+        if (guardData?.gate_id && !isUuid(guardData.gate_id)) return guardData.gate_id;
+        return 'Main Campus Gate';
+    });
+
+    useEffect(() => {
+        const resolveGate = async () => {
+            if (guardData?.guard_gates?.name) {
+                setResolvedGateName(guardData.guard_gates.name);
+                return;
+            }
+            if (guardData?.gate_name) {
+                setResolvedGateName(guardData.gate_name);
+                return;
+            }
+            if (guardData?.gate_id) {
+                if (!isUuid(guardData.gate_id)) {
+                    setResolvedGateName(guardData.gate_id);
+                    return;
+                }
+                try {
+                    const { data } = await supabase
+                        .from('guard_gates')
+                        .select('name')
+                        .eq('id', guardData.gate_id)
+                        .maybeSingle();
+                    if (data?.name) {
+                        setResolvedGateName(data.name);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("Gate lookup error:", e);
+                }
+            }
+            setResolvedGateName('Main Campus Gate');
+        };
+        resolveGate();
+    }, [guardData]);
+
     // Live student search for parent visiting a specific student
     const handleSearchWard = async (query) => {
         const q = query.trim();
@@ -127,7 +171,7 @@ const GuardHome = ({ guardData }) => {
                 ? (visitingStudentRoll.trim() ? `PRNT-${visitingStudentRoll.trim().toUpperCase()}` : `VIS-${contactPhone.slice(-4) || 'PASS'}`)
                 : (applicationNo.trim() ? `ADM-${applicationNo.trim().toUpperCase()}` : `JOIN-${contactPhone.slice(-4) || 'PASS'}`);
 
-            const gateDisplayName = guardData?.guard_gates?.name || guardData?.gate_id || 'Main Campus Gate';
+            const gateDisplayName = resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate';
 
             // 1. Insert into movement_logs
             await supabase.from('movement_logs').insert([{
@@ -257,7 +301,7 @@ const GuardHome = ({ guardData }) => {
             let studentData = null;
             if (sId) {
                 const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
-                let query = supabase.from('students').select('*, departments(name)');
+                let query = supabase.from('students').select('*, departments(id, name)');
                 if (isUuid) {
                     query = query.or(`id.eq.${sId},student_id.eq.${sId}`);
                 } else {
@@ -267,12 +311,23 @@ const GuardHome = ({ guardData }) => {
                 studentData = data;
             }
 
+            let deptName = studentData?.departments?.name || studentData?.department || studentData?.department_name;
+            if (!deptName && studentData?.department_id) {
+                try {
+                    const { data: deptRow } = await supabase.from('departments').select('name').eq('id', studentData.department_id).maybeSingle();
+                    if (deptRow?.name) deptName = deptRow.name;
+                } catch (e) {
+                    console.warn("Department lookup error:", e);
+                }
+            }
+
             setActiveVerification({
                 ...(studentData || {
                     full_name: activity.user_name || activity.studentName || 'Student',
                     student_id: sId || '24pa1a45b4',
-                    departments: { name: 'Computer Science Engineering' }
                 }),
+                departments: deptName ? { name: deptName } : (studentData?.departments || { name: 'Engineering' }),
+                department: deptName || studentData?.department || 'Engineering',
                 status: activity.status || 'Success',
                 verifiedAt: activity.created_at ? new Date(activity.created_at).toISOString() : new Date().toISOString()
             });
@@ -391,7 +446,7 @@ const GuardHome = ({ guardData }) => {
                 <div className="fixed inset-0 z-[100] bg-white animate-in slide-in-from-bottom duration-500 overflow-hidden">
                     <VerificationResult
                         studentData={activeVerification}
-                        gateName={guardData?.guard_gates?.name || guardData?.gate_id}
+                        gateName={resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate'}
                         verifiedAt={activeVerification.verifiedAt}
                         onNextScan={() => setActiveVerification(null)}
                         warning={activeVerification.warning}
@@ -1030,7 +1085,7 @@ const GuardHome = ({ guardData }) => {
                             {/* Gate Display */}
                             <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between text-xs">
                                 <span className="font-bold text-gray-400 uppercase tracking-wider">Gate Assigned:</span>
-                                <span className="font-black text-[#1a2b3c]">{guardData?.guard_gates?.name || guardData?.gate_id || 'Main Campus Gate'}</span>
+                                <span className="font-black text-[#1a2b3c]">{resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate'}</span>
                             </div>
 
                             {generateError && (

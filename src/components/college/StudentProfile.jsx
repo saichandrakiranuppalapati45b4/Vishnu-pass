@@ -344,7 +344,7 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                                 ...student,
                                 full_name: student?.full_name || student?.name,
                                 student_id: student?.student_id || student?.rollNumber,
-                                departments: student?.departments || { name: student?.department || 'Computer Science Engineering' }
+                                departments: student?.departments?.name ? student.departments : { name: student?.department || student?.department_name || 'Engineering' }
                             }}
                             gateName={selectedLogForPass?.gateName || selectedLogForPass?.gateId || selectedLogForPass?.gate_id || 'Main Campus Gate'}
                             verifiedAt={selectedLogForPass?.created_at ? format(new Date(selectedLogForPass.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a')}

@@ -17,11 +17,11 @@ const DailyDigitalPass = React.forwardRef(({
         : (isParentVisitor ? 'VP' : isNewJoiner ? 'NJ' : 'ST');
 
     const fullName = studentData?.full_name || (isVisitorPass ? 'Campus Visitor' : 'Vishnu Student');
-    const deptFull = studentData?.departments?.name || 'Department';
+    const deptFull = studentData?.departments?.name || studentData?.department_name || studentData?.department || 'Department';
     
     // Smart Dept Shortener
     let deptShort = 'DEPT';
-    if (deptFull) {
+    if (deptFull && deptFull !== 'Department') {
         const match = deptFull.match(/\(([^)]+)\)/);
         if (match && match[1]) {
             deptShort = match[1];
@@ -29,11 +29,12 @@ const DailyDigitalPass = React.forwardRef(({
             deptShort = deptFull.split(/\s+/).map(word => {
                 const lWord = word.toLowerCase();
                 if (lWord === 'and' || lWord === '&') return '&';
-                if (['of', 'for', 'the'].includes(lWord)) return '';
+                if (['of', 'for', 'the', 'in', 'at'].includes(lWord)) return '';
                 return word[0];
             }).join('');
         }
         deptShort = deptShort.toUpperCase().replace(/[^A-Z0-9&]/g, '');
+        if (deptShort.length < 2) deptShort = deptFull.substring(0, 4).toUpperCase();
     }
 
     const todayDate = format(new Date(), 'dd MMM yyyy');

@@ -94,13 +94,23 @@ const Reports = ({ collegeData }) => {
             }
 
             if (studentData) {
+                let deptName = studentData.departments?.name || studentData.department || studentData.department_name;
+                if (!deptName && studentData.department_id) {
+                    try {
+                        const { data: deptRow } = await supabase.from('departments').select('name').eq('id', studentData.department_id).maybeSingle();
+                        if (deptRow?.name) deptName = deptRow.name;
+                    } catch (e) {
+                        console.warn(e);
+                    }
+                }
                 setSelectedLog({
                     ...log,
                     studentData: {
                         ...studentData,
                         full_name: studentData.full_name || log.studentName || log.user_name || 'Student',
                         student_id: studentData.student_id || log.studentId || sId,
-                        departments: studentData.departments || { name: studentData.department || 'Computer Science Engineering' }
+                        departments: deptName ? { name: deptName } : (studentData.departments || { name: 'Engineering' }),
+                        department: deptName || studentData.department || 'Engineering'
                     }
                 });
             } else {
@@ -109,7 +119,8 @@ const Reports = ({ collegeData }) => {
                     studentData: {
                         full_name: log.studentName || log.user_name || 'Student',
                         student_id: log.studentId || log.student_id || sId || '24pa1a45b4',
-                        departments: { name: 'Computer Science Engineering' },
+                        departments: { name: 'Engineering' },
+                        department: 'Engineering',
                         photo_url: log.photoUrl || null,
                         year_of_study: '3',
                         batch: '2024-2028',
@@ -126,7 +137,8 @@ const Reports = ({ collegeData }) => {
                 studentData: {
                     full_name: log.studentName || log.user_name || 'Student',
                     student_id: log.studentId || log.student_id || '24pa1a45b4',
-                    departments: { name: 'Computer Science Engineering' },
+                    departments: { name: 'Engineering' },
+                    department: 'Engineering',
                     photo_url: log.photoUrl || null,
                     status: 'Active'
                 }

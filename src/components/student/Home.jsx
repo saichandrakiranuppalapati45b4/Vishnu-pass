@@ -134,7 +134,7 @@ const Home = ({ studentData, onNotificationClick }) => {
                         <div className="grid grid-cols-2 gap-y-8">
                             <div>
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Department</p>
-                                <p className="text-sm font-black text-gray-900">{studentData?.departments?.name || studentData?.department || 'Computer Science'}</p>
+                                <p className="text-sm font-black text-gray-900">{studentData?.departments?.name || studentData?.department_name || studentData?.department || 'Engineering'}</p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Blood Group</p>

@@ -366,7 +366,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                             [
                                 { label: 'Candidate Name', value: studentData?.full_name || 'Candidate', color: 'text-[#1a2b3c]' },
                                 { label: 'Contact Number', value: studentData?.contact_number || 'N/A', color: 'text-slate-600' },
-                                { label: 'Department / Branch', value: studentData?.departments?.name || 'Engineering Stream', color: 'text-[#1a2b3c]' },
+                                { label: 'Department / Branch', value: studentData?.departments?.name || studentData?.department_name || studentData?.department || 'Engineering Stream', color: 'text-[#1a2b3c]' },
                                 { label: 'Application / Temp ID', value: studentData?.application_no || studentData?.student_id || 'N/A', color: 'text-purple-700' },
                                 { label: 'Purpose / Action', value: studentData?.purpose || 'New Admission / Reporting', color: 'text-[#f47c20]' },
                                 { label: 'Accompanying Persons', value: `${studentData?.persons_count || '1'} Person(s)`, color: 'text-slate-600' },
@@ -379,7 +379,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                             ))
                         ) : (
                             [
-                                { label: 'Department', value: studentData?.departments?.name || 'Computer Science Engineering', color: 'text-[#1a2b3c]' },
+                                { label: 'Department', value: studentData?.departments?.name || studentData?.department_name || studentData?.department || 'Engineering', color: 'text-[#1a2b3c]' },
                                 { label: 'Academic Year', value: `${studentData?.year_of_study || '3rd Year'} (Batch ${studentData?.batch || '2021-2025'})`, color: 'text-[#1a2b3c]' },
                                 { label: 'Institutional Email', value: studentData?.email || 'N/A', color: 'text-slate-600' },
                                 { label: 'Student Contact', value: studentData?.contact_number || 'N/A', color: 'text-slate-600' },

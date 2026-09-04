@@ -21,9 +21,26 @@ const ProfileScreen = ({ studentData, onLogout }) => {
         ? studentData.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
         : '??';
 
-    const deptShort = studentData?.departments?.name
-        ? studentData.departments.name.split(' ').map(w => w[0]).join('').toUpperCase()
-        : 'DEPT';
+    const deptFull = studentData?.departments?.name || studentData?.department_name || studentData?.department || '';
+    let deptShort = 'DEPT';
+    if (deptFull) {
+        const match = deptFull.match(/\(([^)]+)\)/);
+        if (match && match[1]) {
+            deptShort = match[1];
+        } else {
+            deptShort = deptFull
+                .split(/\s+/)
+                .map(w => {
+                    const lw = w.toLowerCase();
+                    if (lw === 'and' || lw === '&') return '&';
+                    if (['of', 'for', 'the', 'in', 'at'].includes(lw)) return '';
+                    return w[0];
+                })
+                .join('');
+        }
+        deptShort = deptShort.toUpperCase().replace(/[^A-Z0-9&]/g, '');
+        if (deptShort.length < 2) deptShort = deptFull.substring(0, 4).toUpperCase();
+    }
 
     const yearLabel = `${studentData?.year_of_study || '1'}${studentData?.year_of_study == 1 ? 'st' :
         studentData?.year_of_study == 2 ? 'nd' :
@@ -117,7 +134,7 @@ const ProfileScreen = ({ studentData, onLogout }) => {
                     
                     <div className="flex items-center gap-2.5 mt-3.5">
                         <span className="bg-[#fff0e6] text-[#f47c20] text-[10px] font-extrabold px-3 py-1.5 rounded-full uppercase tracking-wider">
-                            {deptShort === 'DEPT' ? 'CSE' : deptShort}
+                            {deptShort}
                         </span>
                         <span className="bg-[#fff0e6] text-[#f47c20] text-[10px] font-extrabold px-3 py-1.5 rounded-full uppercase tracking-wider">
                             {studentData?.year_of_study ? yearLabel : '3rd Year'}
@@ -138,8 +155,8 @@ const ProfileScreen = ({ studentData, onLogout }) => {
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-[11px] text-gray-400 font-bold mb-0.5">Department</p>
-                                <p className="text-[13px] font-bold text-gray-800 truncate">
-                                    {studentData?.departments?.name || 'Computer Science and Engineering'}
+                                <p className="text-[13px] font-bold text-gray-800 truncate" title={deptFull || 'Engineering'}>
+                                    {deptFull || 'Engineering'}
                                 </p>
                             </div>
                         </div>

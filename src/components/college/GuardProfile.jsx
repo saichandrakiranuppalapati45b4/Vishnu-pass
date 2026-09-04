@@ -41,13 +41,29 @@ const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
                 .maybeSingle();
 
             if (studentData) {
-                setSelectedLog({ ...log, studentData });
+                let deptName = studentData.departments?.name || studentData.department || studentData.department_name;
+                if (!deptName && studentData.department_id) {
+                    try {
+                        const { data: deptRow } = await supabase.from('departments').select('name').eq('id', studentData.department_id).maybeSingle();
+                        if (deptRow?.name) deptName = deptRow.name;
+                    } catch (e) {
+                        console.warn(e);
+                    }
+                }
+                setSelectedLog({
+                    ...log,
+                    studentData: {
+                        ...studentData,
+                        departments: deptName ? { name: deptName } : (studentData.departments || { name: 'Engineering' }),
+                        department: deptName || studentData.department || 'Engineering'
+                    }
+                });
             } else {
                 throw new Error('Student not found');
             }
         } catch (error) {
             console.error(error);
-            setSelectedLog({ ...log, studentData: { full_name: log.user_name || log.studentName || 'Student' } });
+            setSelectedLog({ ...log, studentData: { full_name: log.user_name || log.studentName || 'Student', departments: { name: 'Engineering' }, department: 'Engineering' } });
         } finally {
             setLoadingStudentData(false);
         }

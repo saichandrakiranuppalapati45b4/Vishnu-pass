@@ -115,7 +115,7 @@ const VirtualIdCard = ({ studentData }) => {
     // Parse names
     const fullName = studentData?.full_name || 'Vishnu Student';
 
-    const deptFull = studentData?.departments?.name || '';
+    const deptFull = studentData?.departments?.name || studentData?.department_name || studentData?.department || '';
     let deptShort = 'DEPT';
     if (deptFull) {
         // 1. Acronym extraction
@@ -129,7 +129,7 @@ const VirtualIdCard = ({ studentData }) => {
                 .map(word => {
                     const lWord = word.toLowerCase();
                     if (lWord === 'and' || lWord === '&') return '&';
-                    const stopWords = ['of', 'for', 'the'];
+                    const stopWords = ['of', 'for', 'the', 'in', 'at'];
                     if (stopWords.includes(lWord)) return '';
                     return word[0];
                 })
@@ -219,8 +219,8 @@ const VirtualIdCard = ({ studentData }) => {
                             <div>
                                 <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">DEPT</p>
                                 <p className="text-[12px] sm:text-[14px] font-[900] text-[#1a2b3c] truncate">{deptShort}</p>
-                                <p className="text-[8px] sm:text-[9px] font-medium text-slate-400 italic truncate" title={studentData?.departments?.name}>
-                                    {studentData?.departments?.name || 'Department'}
+                                <p className="text-[8px] sm:text-[9px] font-medium text-slate-400 italic truncate" title={deptFull || 'Department'}>
+                                    {deptFull || 'Department'}
                                 </p>
                             </div>
 

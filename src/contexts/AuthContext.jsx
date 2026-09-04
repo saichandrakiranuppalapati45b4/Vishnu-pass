@@ -42,13 +42,71 @@ export const AuthProvider = ({ children }) => {
       }
 
       // 2. Check guards table
-      const { data: guardData } = await supabase
+      let { data: guardData } = await supabase
         .from('guards')
-        .select('*')
+        .select('*, guard_gates(id, name), guard_shifts(id, name)')
         .ilike('email', emailLower)
         .maybeSingle();
 
+      if (!guardData) {
+        // Fallback simple query if join syntax fails
+        const { data: simpleGuard } = await supabase
+          .from('guards')
+          .select('*')
+          .ilike('email', emailLower)
+          .maybeSingle();
+        guardData = simpleGuard;
+      }
+
       if (guardData) {
+        let gateName = guardData.guard_gates?.name || null;
+        let shiftName = guardData.guard_shifts?.name || null;
+
+        // If gateName wasn't resolved by relation join, look it up from guard_gates
+        if (!gateName && guardData.gate_id) {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(guardData.gate_id);
+          if (isUuid) {
+            try {
+              const { data: gateRow } = await supabase
+                .from('guard_gates')
+                .select('name')
+                .eq('id', guardData.gate_id)
+                .maybeSingle();
+              if (gateRow?.name) {
+                gateName = gateRow.name;
+              }
+            } catch (e) {
+              console.warn('Gate name lookup failed:', e);
+            }
+          } else {
+            gateName = guardData.gate_id;
+          }
+        }
+
+        // If shiftName wasn't resolved by relation join, look it up from guard_shifts
+        if (!shiftName && guardData.shift_id) {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(guardData.shift_id);
+          if (isUuid) {
+            try {
+              const { data: shiftRow } = await supabase
+                .from('guard_shifts')
+                .select('name')
+                .eq('id', guardData.shift_id)
+                .maybeSingle();
+              if (shiftRow?.name) {
+                shiftName = shiftRow.name;
+              }
+            } catch (e) {
+              console.warn('Shift name lookup failed:', e);
+            }
+          } else {
+            shiftName = guardData.shift_id;
+          }
+        }
+
+        const finalGateName = gateName || 'Main Campus Gate';
+        const finalShiftName = shiftName || 'Morning Shift';
+
         return {
           ...guardData,
           uid: user.id,
@@ -59,16 +117,37 @@ export const AuthProvider = ({ children }) => {
           role: 'guard',
           collegeId: 'vishnu-institute',
           gate_id: guardData.gate_id,
-          shift_id: guardData.shift_id
+          shift_id: guardData.shift_id,
+          gate_name: finalGateName,
+          guard_gates: { id: guardData.gate_id, name: finalGateName },
+          guard_shifts: { id: guardData.shift_id, name: finalShiftName }
         };
       }
 
       // 3. Check students table
-      const { data: studentData } = await supabase
-        .from('students')
-        .select('*')
-        .ilike('email', emailLower)
-        .maybeSingle();
+      let studentData = null;
+      try {
+        const { data: joinedData, error: joinErr } = await supabase
+          .from('students')
+          .select('*, departments(id, name)')
+          .ilike('email', emailLower)
+          .maybeSingle();
+        
+        if (!joinErr && joinedData) {
+          studentData = joinedData;
+        }
+      } catch (err) {
+        console.warn('Direct join on students & departments failed, falling back:', err);
+      }
+
+      if (!studentData) {
+        const { data: rawData } = await supabase
+          .from('students')
+          .select('*')
+          .ilike('email', emailLower)
+          .maybeSingle();
+        studentData = rawData;
+      }
 
       if (studentData) {
         if (studentData.status === 'Suspended') {
@@ -76,6 +155,50 @@ export const AuthProvider = ({ children }) => {
           await supabase.auth.signOut();
           return null;
         }
+
+        // Robust department resolution
+        let resolvedDeptName = null;
+        let resolvedDeptId = studentData.department_id || null;
+
+        if (studentData.departments) {
+          if (Array.isArray(studentData.departments) && studentData.departments.length > 0) {
+            resolvedDeptName = studentData.departments[0]?.name;
+            resolvedDeptId = studentData.departments[0]?.id || resolvedDeptId;
+          } else if (typeof studentData.departments === 'object' && studentData.departments.name) {
+            resolvedDeptName = studentData.departments.name;
+            resolvedDeptId = studentData.departments.id || resolvedDeptId;
+          }
+        }
+
+        // If department name not yet resolved, look it up from departments table using department_id or department field
+        if (!resolvedDeptName && (studentData.department_id || studentData.department)) {
+          const deptTarget = studentData.department_id || studentData.department;
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deptTarget);
+          
+          if (isUuid || deptTarget.length <= 12) {
+            try {
+              const { data: deptRow } = await supabase
+                .from('departments')
+                .select('id, name')
+                .eq('id', deptTarget)
+                .maybeSingle();
+              if (deptRow?.name) {
+                resolvedDeptName = deptRow.name;
+                resolvedDeptId = deptRow.id;
+              }
+            } catch (deptErr) {
+              console.warn('Department lookup error:', deptErr);
+            }
+          } else {
+            // Already a human-readable department name string
+            resolvedDeptName = deptTarget;
+          }
+        }
+
+        const finalDepartments = resolvedDeptName
+          ? { id: resolvedDeptId, name: resolvedDeptName }
+          : { name: 'Engineering' };
+
         return {
           ...studentData,
           uid: user.id,
@@ -86,6 +209,9 @@ export const AuthProvider = ({ children }) => {
           role: 'student',
           student_id: studentData.student_id,
           collegeId: 'vishnu-institute',
+          department_id: resolvedDeptId,
+          department: resolvedDeptName || 'Engineering',
+          departments: finalDepartments,
           first_login_completed: (studentData.first_login_completed === true || user.user_metadata?.first_login_completed === true)
         };
       }
