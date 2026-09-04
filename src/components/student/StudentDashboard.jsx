@@ -38,13 +38,34 @@ const StudentDashboard = ({ studentData: initialStudentData, onLogout }) => {
         setStudentData(prev => ({ ...prev, status: newStatus }));
     };
 
-    if (studentData?.status === 'Pending' || studentData?.status === 'Under Review') {
+    const handleOnboardingComplete = (updated) => {
+        setStudentData(prev => ({
+            ...prev,
+            ...updated,
+            first_login_completed: true,
+            status: 'Active'
+        }));
+    };
+
+    const isFirstTimeUser = 
+        !studentData?.first_login_completed || 
+        studentData?.status === 'Pending' || 
+        studentData?.status === 'Under Review' ||
+        !studentData?.photo_url;
+
+    if (isFirstTimeUser) {
         return (
             <div className="flex flex-col h-screen bg-white max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-gray-100">
-                <ActivationScreen studentData={studentData} onStatusChange={handleStatusChange} onLogout={onLogout} />
+                <ActivationScreen 
+                    studentData={studentData} 
+                    onComplete={handleOnboardingComplete}
+                    onStatusChange={handleStatusChange} 
+                    onLogout={onLogout} 
+                />
             </div>
         );
     }
+
 
     const renderContent = () => {
         switch (activeTab) {

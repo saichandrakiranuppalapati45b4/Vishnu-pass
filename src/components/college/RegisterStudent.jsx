@@ -3,7 +3,9 @@ import { User, GraduationCap, Camera, ChevronDown, Loader2, Lock, ChevronLeft, U
 import { supabase, uploadFile } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
+import { registerStudentAccount } from '../../lib/functions';
 import Papa from 'papaparse';
+
 
 const CustomSelect = ({ label, value, options, placeholder = 'Select', onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -163,33 +165,23 @@ const RegisterStudent = ({ collegeData, onCancel }) => {
     };
 
     const registerStudentPayload = async (payload) => {
-        const studentDocId = (payload.studentId ? payload.studentId.trim() : 'student_' + Date.now());
+        const response = await registerStudentAccount({
+            fullName: (payload.fullName || '').trim(),
+            studentId: (payload.studentId || '').trim(),
+            email: (payload.email || '').trim().toLowerCase(),
+            password: payload.password,
+            gender: payload.gender || 'male',
+            contactNumber: payload.contactNumber || '',
+            photoUrl: payload.photoUrl || '',
+            departmentId: payload.departmentId || null,
+            yearOfStudy: payload.yearOfStudy || '1',
+            hostelType: payload.hostelType || 'Dayscholar',
+            batch: payload.batch || '2024'
+        });
 
-        const studentDocData = {
-            full_name: (payload.fullName || '').trim(),
-            student_id: (payload.studentId || '').trim(),
-            email: (payload.email || '').trim(),
-            contact_number: payload.contactNumber || '',
-            photo_url: payload.photoUrl || '',
-            department_id: payload.departmentId || null,
-            year_of_study: payload.yearOfStudy || '1',
-            hostel_type: payload.hostelType || 'Dayscholar',
-            batch: payload.batch || '2024',
-            status: 'Active'
-        };
-
-        const { data, error: insertErr } = await supabase
-            .from('students')
-            .upsert([studentDocData], { onConflict: 'student_id' })
-            .select()
-            .single();
-
-        if (insertErr) {
-            throw insertErr;
-        }
-
-        return { data: { success: true, id: data?.id || studentDocId } };
+        return response;
     };
+
 
     // Single Submit
     const handleSingleSubmit = async (e) => {

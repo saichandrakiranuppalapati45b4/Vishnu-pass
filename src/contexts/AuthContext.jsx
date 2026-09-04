@@ -85,9 +85,11 @@ export const AuthProvider = ({ children }) => {
           email: studentData.email || user.email,
           role: 'student',
           student_id: studentData.student_id,
-          collegeId: 'vishnu-institute'
+          collegeId: 'vishnu-institute',
+          first_login_completed: (studentData.first_login_completed === true || user.user_metadata?.first_login_completed === true)
         };
       }
+
 
       // 4. Default fallback student profile if user is authenticated
       return {

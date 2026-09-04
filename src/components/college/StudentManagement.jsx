@@ -8,7 +8,9 @@ import {
 import { supabase } from '../../config/supabase';
 import { logAuditAction } from '../../utils/auditLogger';
 import { useNotification } from '../../contexts/NotificationContext';
+import { deleteStudentAccount } from '../../lib/functions';
 import EditStudentModal from './EditStudentModal';
+
 
 // Helper function to generate a consistent color from a name
 const stringToColor = (name) => {
@@ -210,10 +212,10 @@ const StudentManagement = ({ collegeData, onNavigate }) => {
         }
     };
 
-    const handlePermanentDeleteStudent = async (studentId, studentName) => {
+    const handlePermanentDeleteStudent = async (studentId, studentName, rollNumber, email) => {
         const confirmed = await showModal({
             title: 'Delete Student Permanently',
-            message: `Are you sure you want to PERMANENTLY delete ${studentName}? This action cannot be undone.`,
+            message: `Are you sure you want to PERMANENTLY delete ${studentName}? This will delete the student profile from the database and permanently remove their authentication login credentials. This action cannot be undone.`,
             confirmText: 'Delete Permanently',
             cancelText: 'Cancel',
             type: 'warning'
@@ -222,24 +224,27 @@ const StudentManagement = ({ collegeData, onNavigate }) => {
         if (!confirmed) return;
 
         try {
-            await supabase
-                .from('students')
-                .delete()
-                .eq('id', studentId);
+            await deleteStudentAccount({
+                id: studentId,
+                studentId: rollNumber,
+                email: email
+            });
 
             await logAuditAction({
                 action: 'Deleted Student Permanently',
                 resource: studentName,
-                details: { id: studentId }
+                details: { id: studentId, rollNumber, email }
             });
 
             fetchStudents();
             setActionMenuId(null);
-            showNotification(`${studentName} permanently deleted.`, 'success');
+            showNotification(`${studentName} and login credentials permanently deleted.`, 'success');
         } catch (error) {
-            showNotification('Failed to delete student. Please try again.', 'error');
+            console.error('Delete student error:', error);
+            showNotification(error.message || 'Failed to delete student. Please try again.', 'error');
         }
     };
+
 
     const getDeptName = () => {
         if (deptFilter === 'all') return 'All Departments';
@@ -459,7 +464,7 @@ const StudentManagement = ({ collegeData, onNavigate }) => {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handlePermanentDeleteStudent(student.id, student.full_name, student.student_id);
+                                                                handlePermanentDeleteStudent(student.id, student.full_name, student.student_id, student.email);
                                                                 setActionMenuId(null);
                                                             }}
                                                             className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
