@@ -71,7 +71,7 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                 const sIdentifier = studentRow.student_id || studentRow.id;
                 const { data: movementLogs } = await supabase
                     .from('movement_logs')
-                    .select('*')
+                    .select('*, guard_gates:access_point_id(id, name)')
                     .eq('student_id', sIdentifier)
                     .order('created_at', { ascending: false })
                     .limit(20);
@@ -288,36 +288,40 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                                             </td>
                                         </tr>
                                     ) : (
-                                        logs.map((log) => (
-                                            <tr 
-                                                key={log.id} 
-                                                onClick={() => {
-                                                    setSelectedLogForPass(log);
-                                                    setShowPassCard(true);
-                                                }}
-                                                className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
-                                            >
-                                                <td className="px-8 py-4 font-bold text-gray-900 group-hover:text-[#f47c20] transition-colors">{log.gateName || log.gateId || log.gate_id || 'Gate 1'}</td>
-                                                <td className="px-8 py-4">
-                                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${log.movementType === 'IN' || log.movementType === 'AUTHORIZED' || log.movement_type === 'IN' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
-                                                        }`}>
-                                                        {log.movementType || log.movement_type || 'AUTHORIZED'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-8 py-4 text-gray-500 font-medium">
-                                                    {log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'dd MMM, hh:mm a') : log.created_at ? format(new Date(log.created_at), 'dd MMM, hh:mm a') : 'N/A'}
-                                                </td>
-                                                <td className="px-8 py-4 text-[#f47c20] font-bold">
-                                                    {log.scannedAt?.toDate ? formatDistanceToNow(log.scannedAt.toDate(), { addSuffix: true }) : log.created_at ? formatDistanceToNow(new Date(log.created_at), { addSuffix: true }) : 'N/A'}
-                                                </td>
-                                                <td className="px-8 py-4 text-right">
-                                                    <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f47c20] bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100 group-hover:bg-[#f47c20] group-hover:text-white transition-all">
-                                                        <Eye className="w-3.5 h-3.5" />
-                                                        Pass
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))
+                                        logs.map((log) => {
+                                            const rawGate = log.guard_gates?.name || log.gateName || log.gateId;
+                                            const displayGate = rawGate ? String(rawGate).replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
+                                            return (
+                                                <tr 
+                                                    key={log.id} 
+                                                    onClick={() => {
+                                                        setSelectedLogForPass(log);
+                                                        setShowPassCard(true);
+                                                    }}
+                                                    className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                                                >
+                                                    <td className="px-8 py-4 font-bold text-gray-900 group-hover:text-[#f47c20] transition-colors">{displayGate}</td>
+                                                    <td className="px-8 py-4">
+                                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${log.movementType === 'IN' || log.movementType === 'AUTHORIZED' || log.movement_type === 'IN' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
+                                                            }`}>
+                                                            {log.movementType || log.movement_type || 'AUTHORIZED'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-8 py-4 text-gray-500 font-medium">
+                                                        {log.created_at ? format(new Date(log.created_at), 'dd MMM, hh:mm a') : (log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'dd MMM, hh:mm a') : 'N/A')}
+                                                    </td>
+                                                    <td className="px-8 py-4 text-[#f47c20] font-bold">
+                                                        {log.created_at ? formatDistanceToNow(new Date(log.created_at), { addSuffix: true }) : (log.scannedAt?.toDate ? formatDistanceToNow(log.scannedAt.toDate(), { addSuffix: true }) : 'N/A')}
+                                                    </td>
+                                                    <td className="px-8 py-4 text-right">
+                                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f47c20] bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100 group-hover:bg-[#f47c20] group-hover:text-white transition-all">
+                                                            <Eye className="w-3.5 h-3.5" />
+                                                            Pass
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
@@ -346,7 +350,7 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                                 student_id: student?.student_id || student?.rollNumber,
                                 departments: student?.departments?.name ? student.departments : { name: student?.department || student?.department_name || 'Engineering' }
                             }}
-                            gateName={selectedLogForPass?.gateName || selectedLogForPass?.gateId || selectedLogForPass?.gate_id || 'Main Campus Gate'}
+                            gateName={selectedLogForPass?.guard_gates?.name ? selectedLogForPass.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (selectedLogForPass?.gateName || selectedLogForPass?.gateId || 'Main Campus Gate')}
                             verifiedAt={selectedLogForPass?.created_at ? format(new Date(selectedLogForPass.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a')}
                             onNextScan={() => {
                                 setShowPassCard(false);

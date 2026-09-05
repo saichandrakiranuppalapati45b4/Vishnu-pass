@@ -178,7 +178,8 @@ const GuardHome = ({ guardData }) => {
                 user_name: `${passCategory === 'PARENT' ? '[Visitor/Parent]' : '[New Joining]'} ${displayName}`,
                 student_id: passId,
                 movement_type: passMovementType,
-                status: 'Success'
+                status: 'Success',
+                access_point_id: isUuid(guardData?.gate_id) ? guardData.gate_id : null
             }]);
 
             // 2. Build full pass metadata payload
@@ -258,6 +259,9 @@ const GuardHome = ({ guardData }) => {
         if (!activity) return;
         const sId = activity.student_id || activity.studentId || activity.user_name;
         const uName = activity.user_name || activity.studentName || '';
+        const actGateName = activity.guard_gates?.name 
+            ? activity.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) 
+            : (resolvedGateName || 'Main Campus Gate');
 
         // Check if this log was a visitor/parent or new joining pass
         if (uName.includes('[Visitor/Parent]') || sId?.startsWith('PRNT-') || sId?.startsWith('VIS-')) {
@@ -274,6 +278,7 @@ const GuardHome = ({ guardData }) => {
                 departments: { name: 'Parent / Campus Visitor' },
                 hostel_type: 'Outer Parent / Visitor',
                 status: activity.status || 'Success',
+                gateName: actGateName,
                 verifiedAt: activity.created_at ? new Date(activity.created_at).toISOString() : new Date().toISOString()
             });
             return;
@@ -292,6 +297,7 @@ const GuardHome = ({ guardData }) => {
                 departments: { name: 'New Joining Candidate' },
                 hostel_type: 'New Joining Member',
                 status: activity.status || 'Success',
+                gateName: actGateName,
                 verifiedAt: activity.created_at ? new Date(activity.created_at).toISOString() : new Date().toISOString()
             });
             return;
@@ -329,6 +335,7 @@ const GuardHome = ({ guardData }) => {
                 departments: deptName ? { name: deptName } : (studentData?.departments || { name: 'Engineering' }),
                 department: deptName || studentData?.department || 'Engineering',
                 status: activity.status || 'Success',
+                gateName: actGateName,
                 verifiedAt: activity.created_at ? new Date(activity.created_at).toISOString() : new Date().toISOString()
             });
         } catch (err) {
@@ -356,7 +363,7 @@ const GuardHome = ({ guardData }) => {
             // 1. Total Scans & Activities
             const { data: logs, count } = await supabase
                 .from('movement_logs')
-                .select('*', { count: 'exact' })
+                .select('*, guard_gates:access_point_id(id, name)', { count: 'exact' })
                 .order('created_at', { ascending: false })
                 .limit(10);
 
@@ -425,7 +432,8 @@ const GuardHome = ({ guardData }) => {
                     user_name: updated.student_id,
                     student_id: updated.student_id,
                     movement_type: updated.movement_type || 'IN',
-                    status: 'Success'
+                    status: 'Success',
+                    access_point_id: isUuid(guardData?.gate_id) ? guardData.gate_id : null
                 }]);
             }
 
@@ -446,7 +454,7 @@ const GuardHome = ({ guardData }) => {
                 <div className="fixed inset-0 z-[100] bg-white animate-in slide-in-from-bottom duration-500 overflow-hidden">
                     <VerificationResult
                         studentData={activeVerification}
-                        gateName={resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate'}
+                        gateName={activeVerification.gateName || resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate'}
                         verifiedAt={activeVerification.verifiedAt}
                         onNextScan={() => setActiveVerification(null)}
                         warning={activeVerification.warning}

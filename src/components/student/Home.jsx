@@ -31,7 +31,7 @@ const Home = ({ studentData, onNotificationClick }) => {
             try {
                 const queryBuilder = supabase
                     .from('movement_logs')
-                    .select('*');
+                    .select('*, guard_gates:access_point_id(id, name)');
 
                 if (studentData.student_id) {
                     queryBuilder.eq('student_id', studentData.student_id);
@@ -205,13 +205,15 @@ const Home = ({ studentData, onNotificationClick }) => {
                                 <tbody className="divide-y divide-gray-50">
                                     {logs.map((log) => {
                                         const isEntry = (log.movement_type === 'IN' || log.movement_type === 'ENTRY' || log.movement_type === 'AUTHORIZED');
-                                        const logDate = log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date();
+                                        const logDate = log.created_at ? new Date(log.created_at) : (log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date());
                                         const isValidDate = logDate && !isNaN(logDate.getTime());
+                                        const rawGate = log.guard_gates?.name || log.gateName || log.gateId;
+                                        const displayGate = rawGate ? String(rawGate).replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
                                         return (
                                             <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
                                                 <td className="px-8 py-5">
                                                     <p className="text-sm font-bold text-gray-900 leading-tight">
-                                                        {log.gateName || 'Gate'}
+                                                        {displayGate}
                                                     </p>
                                                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">
                                                         Verified

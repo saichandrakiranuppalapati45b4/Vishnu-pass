@@ -74,7 +74,7 @@ const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
             try {
                 const { data } = await supabase
                     .from('movement_logs')
-                    .select('*')
+                    .select('*, guard_gates:access_point_id(id, name)')
                     .order('created_at', { ascending: false })
                     .limit(5);
 
@@ -275,7 +275,7 @@ const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
                                                     </span>
                                                     <span className="text-gray-500 text-xs flex items-center gap-1">
                                                         <MapPin className="w-3 h-3" />
-                                                        {log.gateId || 'Gate'}
+                                                        {log.guard_gates?.name ? log.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (log.gateName || log.gateId || 'Main Campus Gate')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -308,8 +308,8 @@ const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
                         ) : (
                             <VerificationResult 
                                 studentData={selectedLog.studentData}
-                                gateName={selectedLog.gateId}
-                                verifiedAt={selectedLog.scannedAt?.toDate ? format(selectedLog.scannedAt.toDate(), 'hh:mm a') : ''}
+                                gateName={selectedLog.guard_gates?.name ? selectedLog.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (selectedLog.gateName || selectedLog.gateId || 'Main Campus Gate')}
+                                verifiedAt={selectedLog.created_at ? format(new Date(selectedLog.created_at), 'hh:mm a') : (selectedLog.scannedAt?.toDate ? format(selectedLog.scannedAt.toDate(), 'hh:mm a') : format(new Date(), 'hh:mm a'))}
                                 onNextScan={() => setSelectedLog(null)}
                                 hideNavBar={true}
                             />

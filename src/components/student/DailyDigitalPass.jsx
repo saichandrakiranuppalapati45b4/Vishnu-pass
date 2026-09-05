@@ -37,6 +37,9 @@ const DailyDigitalPass = React.forwardRef(({
         if (deptShort.length < 2) deptShort = deptFull.substring(0, 4).toUpperCase();
     }
 
+    const rawGate = gateName || studentData?.gateName || studentData?.guard_gates?.name;
+    const formattedGate = rawGate ? String(rawGate).replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
+
     const todayDate = format(new Date(), 'dd MMM yyyy');
 
     return (
@@ -98,7 +101,7 @@ const DailyDigitalPass = React.forwardRef(({
                                     ? 'bg-rose-100 text-rose-700 border-rose-200' 
                                     : isParentVisitor 
                                         ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                        : isNewJoiner
+                                        : isNewJoiner 
                                             ? 'bg-purple-100 text-purple-800 border-purple-200'
                                             : 'bg-white text-[#7e22ce] border-purple-100'
                             }`}>
@@ -136,7 +139,7 @@ const DailyDigitalPass = React.forwardRef(({
                         </div>
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Entry Gate</p>
-                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{gateName || 'Main Gate'}</p>
+                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{formattedGate}</p>
                         </div>
                     </div>
                 ) : isNewJoiner ? (
@@ -159,7 +162,7 @@ const DailyDigitalPass = React.forwardRef(({
                         </div>
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Entry Gate</p>
-                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{gateName || 'Main Gate'}</p>
+                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{formattedGate}</p>
                         </div>
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Status</p>
@@ -181,12 +184,12 @@ const DailyDigitalPass = React.forwardRef(({
                             <p className={`text-[14px] font-[900] uppercase ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.gender || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Logistics</p>
-                            <p className={`text-[14px] font-[900] ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || 'Day Scholar'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Entry Gate</p>
+                            <p className={`text-[14px] font-[900] text-[#1a2b3c]`}>{formattedGate}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Campus</p>
-                            <p className={`text-[14px] font-[900] ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.campus || 'Main Campus'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Logistics</p>
+                            <p className={`text-[14px] font-[900] ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || studentData?.hostel_type || 'Day Scholar'}</p>
                         </div>
                     </div>
                 )}

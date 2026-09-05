@@ -153,7 +153,7 @@ const Reports = ({ collegeData }) => {
             setLoading(true);
             const { data, error } = await supabase
                 .from('movement_logs')
-                .select('*')
+                .select('*, guard_gates:access_point_id(id, name)')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -161,6 +161,7 @@ const Reports = ({ collegeData }) => {
             const fetchedLogs = (data || []).map(d => ({
                 id: d.id,
                 ...d,
+                gateName: d.guard_gates?.name ? d.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (d.gateName || 'Main Campus Gate'),
                 studentName: d.user_name || d.student_id,
                 studentId: d.student_id,
                 movementType: d.movement_type,
@@ -656,7 +657,7 @@ const Reports = ({ collegeData }) => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600 font-medium">{log.gateId || log.gate_id || 'Gate'}</td>
+                                        <td className="px-6 py-4 text-gray-600 font-medium">{log.gateName || log.guard_gates?.name || 'Main Campus Gate'}</td>
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${(log.movementType?.toUpperCase() === 'IN' || log.movementType?.toUpperCase() === 'ENTRY') ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
                                                 {log.movementType || log.movement_type || 'N/A'}
@@ -826,7 +827,7 @@ const Reports = ({ collegeData }) => {
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-3.5 text-gray-600 font-medium text-xs">{log.gateId || log.gate_id || 'Gate'}</td>
+                                                <td className="px-6 py-3.5 text-gray-600 font-medium text-xs">{log.gateName || log.guard_gates?.name || 'Main Campus Gate'}</td>
                                                 <td className="px-6 py-3.5">
                                                     <span className={`inline-flex px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded ${(log.movementType?.toUpperCase() === 'IN' || log.movementType?.toUpperCase() === 'ENTRY') ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
                                                         {log.movementType || log.movement_type || 'N/A'}
@@ -885,7 +886,7 @@ const Reports = ({ collegeData }) => {
                         ) : (
                             <VerificationResult 
                                 studentData={selectedLog.studentData}
-                                gateName={selectedLog.gateId || selectedLog.gate_id || 'Main Gate'}
+                                gateName={selectedLog.gateName || selectedLog.guard_gates?.name || selectedLog.gateId || 'Main Campus Gate'}
                                 verifiedAt={selectedLog.created_at ? format(new Date(selectedLog.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a')}
                                 onNextScan={() => setSelectedLog(null)}
                                 warning={selectedLog.warning}

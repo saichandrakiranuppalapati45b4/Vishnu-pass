@@ -212,22 +212,32 @@ const ScanScreen = ({ studentData, onBack }) => {
                 scannedGateId = rawValue.split('_')[0].trim();
             }
 
-            // Fetch gate name
-            let gateName = 'Main Gate';
+            // Fetch gate name safely
+            let gateName = 'Main Campus Gate';
+            let finalGateId = null;
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scannedGateId);
             try {
-                const { data: gateRow } = await supabase
-                    .from('guard_gates')
-                    .select('name')
-                    .or(`id.eq.${scannedGateId},name.ilike.%${scannedGateId}%`)
-                    .maybeSingle();
+                let query = supabase.from('guard_gates').select('id, name');
+                if (isUuid) {
+                    query = query.eq('id', scannedGateId);
+                } else {
+                    const cleanGateStr = scannedGateId.replace(/_/g, ' ').replace(/-/g, ' ');
+                    query = query.ilike('name', `%${cleanGateStr}%`);
+                }
+                const { data: gateRow } = await query.maybeSingle();
 
                 if (gateRow?.name) {
                     gateName = gateRow.name;
-                    setGateData({ name: gateName });
+                    finalGateId = gateRow.id;
+                } else if (!isUuid && scannedGateId) {
+                    gateName = scannedGateId.replace(/_/g, ' ').replace(/-/g, ' ');
                 }
             } catch (e) {
                 console.warn("Gate fetch error", e);
             }
+
+            const formattedGateName = gateName ? gateName.replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
+            setGateData({ id: finalGateId, name: formattedGateName });
 
             // Fetch Policies for Auto-Approval check
             let policies = null;
@@ -262,7 +272,8 @@ const ScanScreen = ({ studentData, onBack }) => {
                     user_name: studentData.full_name,
                     student_id: studentData.student_id || studentData.id,
                     movement_type: movementTypeRef.current,
-                    status: 'Success'
+                    status: 'Success',
+                    access_point_id: finalGateId || (isUuid ? scannedGateId : null)
                 }]);
             }
             
@@ -288,7 +299,7 @@ const ScanScreen = ({ studentData, onBack }) => {
         return (
             <VerificationResult 
                 studentData={studentData}
-                gateName={gateData?.name || 'Main Gate'}
+                gateName={gateData?.name || 'Main Campus Gate'}
                 verifiedAt={verifiedAt}
                 onNextScan={onBack}
                 warning={sessionWarning}

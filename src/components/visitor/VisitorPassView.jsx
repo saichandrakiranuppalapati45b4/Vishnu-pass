@@ -50,7 +50,7 @@ const VisitorPassView = () => {
                 if (!parsed && passId) {
                     const { data: log } = await supabase
                         .from('movement_logs')
-                        .select('*')
+                        .select('*, guard_gates:access_point_id(id, name)')
                         .eq('student_id', passId)
                         .order('created_at', { ascending: false })
                         .limit(1)
@@ -60,6 +60,7 @@ const VisitorPassView = () => {
                         const isParent = log.student_id?.startsWith('PRNT-') || log.student_id?.startsWith('VIS-') || log.user_name?.includes('[Visitor/Parent]');
                         const isJoiner = log.student_id?.startsWith('ADM-') || log.student_id?.startsWith('JOIN-') || log.user_name?.includes('[New Joining]');
                         const cleanName = log.user_name?.replace(/\[.*?\]/g, '').trim() || 'Visitor';
+                        const gateDisplayName = log.guard_gates?.name ? log.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
 
                         parsed = {
                             isVisitorPass: true,
@@ -69,7 +70,7 @@ const VisitorPassView = () => {
                             purpose: 'Authorized Campus Visit',
                             verifiedAt: log.created_at || new Date().toISOString(),
                             status: log.status || 'Success',
-                            gateName: 'Main Campus Gate'
+                            gateName: gateDisplayName
                         };
                     }
                 }

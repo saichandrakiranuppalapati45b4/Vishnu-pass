@@ -52,6 +52,10 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
         }
     })();
 
+    // Gate Name resolution and formatting
+    const rawGate = gateName || studentData?.gateName || studentData?.guard_gates?.name;
+    const formattedGate = rawGate ? String(rawGate).replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
+
     // CORS-safe photo loading logic (Crucial for Canvas Capture)
     useEffect(() => {
         const loadPhoto = async () => {
@@ -188,7 +192,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                 <DailyDigitalPass 
                     ref={passRef}
                     studentData={studentData}
-                    gateName={gateName || studentData?.gateName}
+                    gateName={formattedGate}
                     verifiedAt={verifiedAt}
                     isExpired={isExpired}
                     isVisitorPass={isVisitorPass}
@@ -403,7 +407,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-[#f8f9fb] p-4 rounded-2xl">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Entry Point</p>
-                                <p className="text-[11px] font-black text-[#1a2b3c]">{gateName || studentData?.gateName || 'Main Campus Gate'}</p>
+                                <p className="text-[11px] font-black text-[#1a2b3c]">{formattedGate}</p>
                             </div>
                             <div className="bg-[#f8f9fb] p-4 rounded-2xl">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Authorized At</p>

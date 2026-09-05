@@ -19,7 +19,7 @@ const EntryLogs = ({ studentData }) => {
             try {
                 const queryBuilder = supabase
                     .from('movement_logs')
-                    .select('*');
+                    .select('*, guard_gates:access_point_id(id, name)');
 
                 if (studentData.student_id) {
                     queryBuilder.eq('student_id', studentData.student_id);
@@ -127,6 +127,8 @@ const EntryLogs = ({ studentData }) => {
                                 
                                 const logDate = log.created_at ? new Date(log.created_at) : (log.scannedAt?.toDate ? log.scannedAt.toDate() : new Date());
                                 const isValidDate = logDate && !isNaN(logDate.getTime());
+                                const rawGate = log.guard_gates?.name || log.gateName || log.gateId;
+                                const displayGate = rawGate ? String(rawGate).replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
                                 
                                 return (
                                     <tr 
@@ -138,7 +140,7 @@ const EntryLogs = ({ studentData }) => {
                                             <div className="flex items-center gap-1">
                                                 <div className={`w-2 h-2 rounded-full ${statusColor}`} />
                                                 <p className="text-xs font-bold text-gray-900 truncate">
-                                                    {log.gateName || 'Authorized Gate'}
+                                                    {displayGate}
                                                 </p>
                                             </div>
                                         </td>
@@ -201,8 +203,8 @@ const EntryLogs = ({ studentData }) => {
                 <div className="fixed inset-0 z-[100] bg-white animate-in slide-in-from-bottom duration-500 overflow-hidden">
                     <VerificationResult
                         studentData={studentData}
-                        gateName={selectedLog.gateName}
-                        verifiedAt={selectedLog.scannedAt?.toDate ? selectedLog.scannedAt.toDate() : new Date()}
+                        gateName={selectedLog.guard_gates?.name ? selectedLog.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (selectedLog.gateName || selectedLog.gateId || 'Main Campus Gate')}
+                        verifiedAt={selectedLog.created_at || (selectedLog.scannedAt?.toDate ? selectedLog.scannedAt.toDate() : new Date())}
                         onNextScan={() => setSelectedLog(null)}
                         warning={selectedLog.warning}
                         status={selectedLog.status}

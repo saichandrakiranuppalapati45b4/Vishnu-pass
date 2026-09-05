@@ -15,7 +15,7 @@ const GuardHistory = ({ guardData, onBack }) => {
         try {
             const { data, error } = await supabase
                 .from('movement_logs')
-                .select('*')
+                .select('*, guard_gates:access_point_id(id, name)')
                 .order('created_at', { ascending: false })
                 .limit(100);
 
@@ -169,21 +169,21 @@ const GuardHistory = ({ guardData, onBack }) => {
                                             </div>
                                             <div>
                                                 <h4 className="text-base font-black text-gray-800 leading-none mb-1.5 tracking-tight group-hover:text-[#f47c20] transition-colors">
-                                                    {log.studentName || 'STUDENT'}
+                                                    {log.studentName || log.user_name || 'STUDENT'}
                                                 </h4>
                                                 <p className="text-[11px] font-bold text-gray-400 mb-1 leading-none">
-                                                    ID: {log.studentId || 'GUEST-SCAN'}
+                                                    ID: {log.studentId || log.student_id || 'GUEST-SCAN'}
                                                 </p>
-                                                <p className={`text-[11px] font-bold leading-none ${(['completed', 'approved', 'success'].includes(log.status)) ? 'text-[#f47c20]' : 'text-rose-500'}`}>
-                                                    {log.gateName || 'Main Entrance'} {!(['completed', 'approved', 'success'].includes(log.status)) && ' • Denied'}
+                                                <p className={`text-[11px] font-bold leading-none ${(['completed', 'approved', 'success'].includes(log.status?.toLowerCase())) ? 'text-[#f47c20]' : 'text-rose-500'}`}>
+                                                    {log.guard_gates?.name ? log.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (log.gateName || 'Main Campus Gate')} {!(['completed', 'approved', 'success'].includes(log.status?.toLowerCase())) && ' • Denied'}
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
                                             <div className="text-[11px] font-black text-slate-400 uppercase tracking-tighter">
-                                                {log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'hh:mm a') : 'Now'}
+                                                {log.created_at ? format(new Date(log.created_at), 'hh:mm a') : (log.scannedAt?.toDate ? format(log.scannedAt.toDate(), 'hh:mm a') : 'Now')}
                                             </div>
-                                            {!(['completed', 'approved', 'success'].includes(log.status)) && (
+                                            {!(['completed', 'approved', 'success'].includes(log.status?.toLowerCase())) && (
                                                 <span className="bg-rose-50 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-full border border-rose-100 uppercase tracking-widest">
                                                     Denied
                                                 </span>

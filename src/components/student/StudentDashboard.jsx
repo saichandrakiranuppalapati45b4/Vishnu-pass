@@ -106,7 +106,7 @@ const StudentDashboard = ({ studentData: initialStudentData, onLogout }) => {
                     <div className="scale-[0.85] sm:scale-100 origin-center">
                         <DailyDigitalPass
                             studentData={studentData}
-                            gateName={selectedPass.guard_gates?.name}
+                            gateName={selectedPass.guard_gates?.name ? selectedPass.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (selectedPass.gateName || selectedPass.gateId || 'Main Campus Gate')}
                             verifiedAt={selectedPass.created_at}
                             photoUrl={studentData.photo_url}
                             isExpired={selectedPass.status === 'expired'}
