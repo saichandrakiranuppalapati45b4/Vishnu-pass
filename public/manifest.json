@@ -1,0 +1,26 @@
+{
+  "name": "Vishnu Pass - Digital Student ID & Gate Pass System",
+  "short_name": "Vishnu Pass",
+  "description": "Secure dynamic digital student ID and campus gate pass authorization system for Vishnu Institute of Technology.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8f9fb",
+  "theme_color": "#f47c20",
+  "categories": ["education", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/vishnu-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/vishnu-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

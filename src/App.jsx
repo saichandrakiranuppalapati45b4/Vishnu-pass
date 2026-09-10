@@ -8,6 +8,7 @@ import VisitorPassView from './components/visitor/VisitorPassView';
 import { useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { supabase } from './config/supabase';
+import { updatePageSEO } from './utils/seo';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -74,14 +75,43 @@ function App() {
     </div>
   );
 
-  // Public Visitor Pass Route (Accessible via QR scan without login)
-  const isVisitorPassRoute = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/visitor-pass') ||
-    window.location.pathname.startsWith('/pass/visitor') ||
-    window.location.search.includes('visitor_pass') ||
-    window.location.search.includes('data=') ||
-    window.location.search.includes('pass_id=')
-  );
+  // Dynamic SEO Metadata Updater
+  useEffect(() => {
+    if (isVisitorPassRoute) {
+      updatePageSEO({
+        title: 'Official Visitor Gate Pass | VishnuPass (Vishnu Pass)',
+        description: 'Authorized digital campus visitor pass and security verification checkpoint for Vishnu Institute of Technology, Bhimavaram.',
+        canonicalUrl: 'https://vishnupass.dpdns.org/visitor-pass'
+      });
+    } else if (isLoggedIn) {
+      const role = userProfile?.role?.trim();
+      if (role === 'college_admin' || role === 'admin') {
+        updatePageSEO({
+          title: 'College Administration Portal | VishnuPass (Vishnu Pass)',
+          description: 'Campus management, security monitoring, student gate permissions, and attendance analytics for Vishnu Institute of Technology.',
+          canonicalUrl: 'https://vishnupass.dpdns.org/'
+        });
+      } else if (role === 'guard') {
+        updatePageSEO({
+          title: 'Security Officer Gate Control | VishnuPass (Vishnu Pass)',
+          description: 'Live gate checkpoint scanner, visitor pass generator, and real-time campus movement logs for Vishnu Institute of Technology.',
+          canonicalUrl: 'https://vishnupass.dpdns.org/'
+        });
+      } else {
+        updatePageSEO({
+          title: 'Student Digital ID Portal | VishnuPass (Vishnu Pass)',
+          description: 'Dynamic rotating QR student ID card, authorized pass generation, and real-time movement history for Vishnu Institute of Technology students.',
+          canonicalUrl: 'https://vishnupass.dpdns.org/'
+        });
+      }
+    } else {
+      updatePageSEO({
+        title: 'Sign In | VishnuPass - Digital Student ID & Campus Gate Pass System | Vishnu Pass',
+        description: 'Official digital identification system for Vishnu Institute of Technology, Bhimavaram. Sign in with student roll number, employee ID, or email.',
+        canonicalUrl: 'https://vishnupass.dpdns.org/login'
+      });
+    }
+  }, [isVisitorPassRoute, isLoggedIn, userProfile]);
 
   if (isVisitorPassRoute) {
     return <VisitorPassView />;
@@ -95,8 +125,6 @@ function App() {
   if (isMaintenanceMode) {
     return <MaintenanceScreen />;
   }
-
-  const isLoggedIn = !!currentUser && !!userProfile;
 
   return (
     <>
