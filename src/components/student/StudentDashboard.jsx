@@ -110,17 +110,21 @@ const StudentDashboard = ({ studentData: initialStudentData, onLogout }) => {
                             verifiedAt={selectedPass.created_at}
                             photoUrl={studentData.photo_url}
                             isExpired={selectedPass.status === 'expired'}
+                            isDenied={['rejected', 'denied', 'Denied', 'Rejected'].includes(selectedPass.status)}
+                            denialReason={selectedPass.warning}
                         />
                     </div>
 
-                    <div className="mt-8 flex gap-4">
-                        <button
-                            className="px-8 py-3 bg-white text-gray-900 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-black/20"
-                            onClick={() => {/* Download implementation if needed later */ }}
-                        >
-                            <Download className="w-4 h-4" /> Save Pass
-                        </button>
-                    </div>
+                    {!['rejected', 'denied', 'Denied', 'Rejected'].includes(selectedPass.status) && (
+                        <div className="mt-8 flex gap-4">
+                            <button
+                                className="px-8 py-3 bg-white text-gray-900 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-black/20"
+                                onClick={() => {/* Download implementation if needed later */ }}
+                            >
+                                <Download className="w-4 h-4" /> Save Pass
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -42,18 +42,18 @@ const StudentPermissions = ({ collegeData }) => {
             
             const policiesToSave = {
                 dayscholar: {
-                    autoApproveOutpass: settings.dayscholar.autoApproveOutpass,
-                    allowLateEntry: settings.dayscholar.allowLateEntry,
-                    nightPassEnabled: settings.dayscholar.nightPassEnabled,
-                    monthlyInLimit: settings.dayscholar.monthlyInLimit,
-                    monthlyOutLimit: settings.dayscholar.monthlyOutLimit
+                    autoApproveOutpass: Boolean(settings.dayscholar.autoApproveOutpass),
+                    allowLateEntry: Boolean(settings.dayscholar.allowLateEntry),
+                    nightPassEnabled: Boolean(settings.dayscholar.nightPassEnabled),
+                    monthlyInLimit: parseInt(settings.dayscholar.monthlyInLimit, 10) || 0,
+                    monthlyOutLimit: parseInt(settings.dayscholar.monthlyOutLimit, 10) || 0
                 },
                 hosteler: {
-                    autoApproveOutpass: settings.hosteler.autoApproveOutpass,
-                    allowLateEntry: settings.hosteler.allowLateEntry,
-                    nightPassEnabled: settings.hosteler.nightPassEnabled,
-                    monthlyInLimit: settings.hosteler.monthlyInLimit,
-                    monthlyOutLimit: settings.hosteler.monthlyOutLimit
+                    autoApproveOutpass: Boolean(settings.hosteler.autoApproveOutpass),
+                    allowLateEntry: Boolean(settings.hosteler.allowLateEntry),
+                    nightPassEnabled: Boolean(settings.hosteler.nightPassEnabled),
+                    monthlyInLimit: parseInt(settings.hosteler.monthlyInLimit, 10) || 0,
+                    monthlyOutLimit: parseInt(settings.hosteler.monthlyOutLimit, 10) || 0
                 }
             };
 
@@ -196,18 +196,29 @@ const StudentPermissions = ({ collegeData }) => {
                                         min="0" 
                                         max="100" 
                                         className="flex-1 accent-emerald-500 cursor-pointer"
-                                        value={groupSettings.monthlyInLimit}
+                                        value={groupSettings.monthlyInLimit ?? 100}
                                         onChange={(e) => {
-                                            const val = parseInt(e.target.value);
+                                            const val = Math.max(0, parseInt(e.target.value, 10) || 0);
                                             setSettings(prev => ({
                                                 ...prev,
                                                 [group]: { ...prev[group], monthlyInLimit: val }
                                             }));
                                         }}
                                     />
-                                    <span className="w-12 text-center font-black text-emerald-600 bg-white border border-gray-100 py-1 rounded-lg text-xs shadow-sm">
-                                        {groupSettings.monthlyInLimit}
-                                    </span>
+                                    <input 
+                                        type="number"
+                                        min="0"
+                                        max="500"
+                                        value={groupSettings.monthlyInLimit ?? 100}
+                                        onChange={(e) => {
+                                            const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                            setSettings(prev => ({
+                                                ...prev,
+                                                [group]: { ...prev[group], monthlyInLimit: val }
+                                            }));
+                                        }}
+                                        className="w-16 text-center font-black text-emerald-600 bg-white border border-gray-200 py-1.5 rounded-xl text-xs shadow-sm focus:outline-none focus:border-emerald-500"
+                                    />
                                 </div>
                             </div>
 
@@ -219,18 +230,29 @@ const StudentPermissions = ({ collegeData }) => {
                                         min="0" 
                                         max="100" 
                                         className="flex-1 accent-orange-500 cursor-pointer"
-                                        value={groupSettings.monthlyOutLimit}
+                                        value={groupSettings.monthlyOutLimit ?? 100}
                                         onChange={(e) => {
-                                            const val = parseInt(e.target.value);
+                                            const val = Math.max(0, parseInt(e.target.value, 10) || 0);
                                             setSettings(prev => ({
                                                 ...prev,
                                                 [group]: { ...prev[group], monthlyOutLimit: val }
                                             }));
                                         }}
                                     />
-                                    <span className="w-12 text-center font-black text-orange-600 bg-white border border-gray-100 py-1 rounded-lg text-xs shadow-sm">
-                                        {groupSettings.monthlyOutLimit}
-                                    </span>
+                                    <input 
+                                        type="number"
+                                        min="0"
+                                        max="500"
+                                        value={groupSettings.monthlyOutLimit ?? 100}
+                                        onChange={(e) => {
+                                            const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                            setSettings(prev => ({
+                                                ...prev,
+                                                [group]: { ...prev[group], monthlyOutLimit: val }
+                                            }));
+                                        }}
+                                        className="w-16 text-center font-black text-orange-600 bg-white border border-gray-200 py-1.5 rounded-xl text-xs shadow-sm focus:outline-none focus:border-orange-500"
+                                    />
                                 </div>
                             </div>
                         </div>

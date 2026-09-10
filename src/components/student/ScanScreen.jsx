@@ -40,6 +40,119 @@ const ScanScreen = ({ studentData, onBack }) => {
         return () => clearInterval(timer);
     }, [status]);
 
+    const checkStudentPolicyLimit = async (type) => {
+        try {
+            if (!studentData?.student_id && !studentData?.id) {
+                return { isLimitReached: false, warningText: null, totalUsed: 0, limitCount: 100 };
+            }
+
+            const studentIdentifier = studentData.student_id || studentData.id;
+
+            // Fetch Policies
+            const { data: policyData } = await supabase
+                .from('portal_settings')
+                .select('value')
+                .eq('key', 'student_policies')
+                .maybeSingle();
+
+            let policies = policyData?.value;
+            if (typeof policies === 'string') {
+                try { policies = JSON.parse(policies); } catch (e) { policies = null; }
+            }
+
+            if (!policies) return { isLimitReached: false, warningText: null, totalUsed: 0, limitCount: 100 };
+
+            const rawCategory = String(studentData.hostel_type || studentData.hostel || '').toLowerCase();
+            const category = (rawCategory.includes('hostel') || rawCategory.includes('resident')) ? 'hosteler' : 'dayscholar';
+            const categoryPolicy = policies[category] || policies[`${category}s`];
+
+            if (!categoryPolicy) return { isLimitReached: false, warningText: null, totalUsed: 0, limitCount: 100 };
+
+            const isOut = type === 'OUT';
+            const limitCount = isOut
+                ? parseInt(categoryPolicy.monthlyOutLimit ?? 100, 10)
+                : parseInt(categoryPolicy.monthlyInLimit ?? 100, 10);
+
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
+            const startOfMonthIso = startOfMonth.toISOString();
+
+            const ids = Array.from(new Set([
+                studentData.student_id,
+                studentData.student_id?.toUpperCase(),
+                studentData.student_id?.toLowerCase(),
+                studentData.id
+            ].filter(Boolean)));
+
+            // 1. Query scan_sessions for current month completed scans
+            let sQuery = supabase
+                .from('scan_sessions')
+                .select('id, movement_type, status, created_at')
+                .gte('created_at', startOfMonthIso)
+                .in('status', ['completed', 'approved', 'Success']);
+
+            if (ids.length === 1) {
+                sQuery = sQuery.eq('student_id', ids[0]);
+            } else if (ids.length > 1) {
+                sQuery = sQuery.in('student_id', ids);
+            }
+
+            const { data: scanSessions } = await sQuery;
+            const matchingSessions = (scanSessions || []).filter(row => {
+                const mType = String(row.movement_type || '').toUpperCase();
+                return isOut
+                    ? (mType.includes('OUT') || mType.includes('EXIT'))
+                    : (mType.includes('IN') || mType.includes('ENTRY'));
+            });
+
+            // 2. Query movement_logs for current month completed scans
+            let mQuery = supabase
+                .from('movement_logs')
+                .select('id, movement_type, status, created_at')
+                .gte('created_at', startOfMonthIso)
+                .in('status', ['completed', 'approved', 'Success']);
+
+            if (ids.length === 1) {
+                mQuery = mQuery.eq('student_id', ids[0]);
+            } else if (ids.length > 1) {
+                mQuery = mQuery.in('student_id', ids);
+            }
+
+            const { data: movementLogs } = await mQuery;
+            const matchingMovementLogs = (movementLogs || []).filter(row => {
+                const mType = String(row.movement_type || '').toUpperCase();
+                return isOut
+                    ? (mType.includes('OUT') || mType.includes('EXIT'))
+                    : (mType.includes('IN') || mType.includes('ENTRY'));
+            });
+
+            // Combine sessions and movement logs, deduplicating scans within the same 60-second window
+            const allScans = [
+                ...matchingSessions.map(s => ({ time: new Date(s.created_at).getTime(), id: s.id })),
+                ...matchingMovementLogs.map(m => ({ time: new Date(m.created_at).getTime(), id: m.id }))
+            ];
+            const uniqueScans = [];
+            allScans.sort((a, b) => a.time - b.time).forEach(scan => {
+                const isDuplicate = uniqueScans.some(u => Math.abs(u.time - scan.time) < 60000);
+                if (!isDuplicate) {
+                    uniqueScans.push(scan);
+                }
+            });
+
+            const totalUsed = Math.max(uniqueScans.length, matchingSessions.length, matchingMovementLogs.length);
+            const isLimitReached = totalUsed >= limitCount;
+            const warningText = isLimitReached
+                ? `Monthly ${type} pass limit of ${limitCount} reached (${totalUsed}/${limitCount}). Additional passes cannot be issued.`
+                : null;
+
+            return { isLimitReached, warningText, totalUsed, limitCount };
+        } catch (e) {
+            console.warn("Policy limit check error:", e);
+            return { isLimitReached: false, warningText: null, totalUsed: 0, limitCount: 100 };
+        }
+    };
+
     const handleRequestAccess = async (type) => {
         setError(null);
         setMovementType(type);
@@ -50,49 +163,17 @@ const ScanScreen = ({ studentData, onBack }) => {
                 throw new Error("Student data missing. Please re-login.");
             }
 
-            const studentIdentifier = studentData.student_id || studentData.id;
+            // Verify monthly limits from database
+            const limitCheck = await checkStudentPolicyLimit(type);
+            setIsLimitReached(limitCheck.isLimitReached);
+            limitReachedRef.current = limitCheck.isLimitReached;
+            setSessionWarning(limitCheck.warningText);
 
-            // Fetch Policies
-            let policies = null;
-            const { data: policyData } = await supabase
-                .from('portal_settings')
-                .select('value')
-                .eq('key', 'student_policies')
-                .maybeSingle();
-
-            if (policyData?.value) {
-                policies = typeof policyData.value === 'string' ? JSON.parse(policyData.value) : policyData.value;
+            if (limitCheck.isLimitReached) {
+                setError(limitCheck.warningText);
+                return;
             }
 
-            let isLimitReachedCurrent = false;
-            let warningText = null;
-
-            if (policies) {
-                const category = studentData.hostel_type === 'hosteler' ? 'hosteler' : 'dayscholar';
-                if (policies[category]) {
-                    const limitCount = type === 'IN' ? policies[category].monthlyInLimit : policies[category].monthlyOutLimit;
-                    
-                    const startOfMonth = new Date();
-                    startOfMonth.setDate(1);
-                    startOfMonth.setHours(0, 0, 0, 0);
-                    
-                    const { count } = await supabase
-                        .from('movement_logs')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('student_id', studentIdentifier)
-                        .eq('movement_type', type)
-                        .gte('created_at', startOfMonth.toISOString());
-                    
-                    isLimitReachedCurrent = count !== null && count >= limitCount;
-                    if (isLimitReachedCurrent) {
-                        warningText = `Monthly ${type} limit reached (${count}/${limitCount})`;
-                    }
-                }
-            }
-
-            setIsLimitReached(isLimitReachedCurrent);
-            limitReachedRef.current = isLimitReachedCurrent;
-            setSessionWarning(warningText);
             setStatus('requesting');
             setTimeLeft(25);
 
@@ -150,8 +231,15 @@ const ScanScreen = ({ studentData, onBack }) => {
             const formattedGateName = gateName ? gateName.replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
             setGateData({ id: finalGateId, name: formattedGateName });
 
-            // Automatic Instant Approval upon scanning Gate QR
-            const newStatus = limitReachedRef.current ? 'rejected' : 'completed';
+            // Re-verify limit right before recording scan
+            const limitCheck = await checkStudentPolicyLimit(movementTypeRef.current || 'IN');
+            const limitReached = limitCheck.isLimitReached || limitReachedRef.current;
+            setIsLimitReached(limitReached);
+            limitReachedRef.current = limitReached;
+            const warningText = limitCheck.warningText || sessionWarning;
+            setSessionWarning(warningText);
+
+            const newStatus = limitReached ? 'rejected' : 'completed';
             const resolvedAccessPointId = finalGateId || (isUuid ? scannedGateId : null);
             const studentIdentifier = studentData.student_id || studentData.id;
 
@@ -164,13 +252,13 @@ const ScanScreen = ({ studentData, onBack }) => {
                         gate_id: isUuid ? resolvedAccessPointId : null,
                         status: newStatus,
                         movement_type: movementTypeRef.current || 'IN',
-                        warning: sessionWarning || null
+                        warning: warningText || null
                     }]);
             } catch (sErr) {
                 console.warn("scan_sessions insert error:", sErr);
             }
 
-            // Also attempt to insert directly into movement_logs
+            // Also attempt to insert directly into movement_logs if completed
             if (newStatus === 'completed') {
                 try {
                     await supabase.from('movement_logs').insert([{

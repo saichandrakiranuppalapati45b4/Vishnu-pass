@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Users, GraduationCap, Building2 } from 'lucide-react';
+import { ShieldCheck, Users, GraduationCap, Building2, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 const DailyDigitalPass = React.forwardRef(({ 
@@ -8,6 +8,8 @@ const DailyDigitalPass = React.forwardRef(({
     verifiedAt, 
     photoUrl, 
     isExpired = false,
+    isDenied = false,
+    denialReason = null,
     isVisitorPass = false,
     isParentVisitor = false,
     isNewJoiner = false
@@ -50,32 +52,47 @@ const DailyDigitalPass = React.forwardRef(({
                     Vishnu Institute of Technology
                 </h1>
                 <p className={`font-black text-[10px] tracking-[0.4em] mt-2 opacity-80 uppercase ${
-                    isExpired ? 'text-rose-500' : isParentVisitor ? 'text-amber-600' : isNewJoiner ? 'text-purple-600' : 'text-[#f47c20]'
+                    isDenied ? 'text-rose-600' : isExpired ? 'text-rose-500' : isParentVisitor ? 'text-amber-600' : isNewJoiner ? 'text-purple-600' : 'text-[#f47c20]'
                 }`}>
-                    {isParentVisitor ? 'Official Visitor Gate Pass' : isNewJoiner ? 'New Admission Entry Pass' : `Daily Digital Pass ${isExpired ? '(Expired)' : ''}`}
+                    {isDenied ? 'ACCESS DENIED (LIMIT REACHED)' : isParentVisitor ? 'Official Visitor Gate Pass' : isNewJoiner ? 'New Admission Entry Pass' : `Daily Digital Pass ${isExpired ? '(Expired)' : ''}`}
                 </p>
                 <div className={`h-[2px] w-16 mx-auto mt-3 rounded-full opacity-60 ${
-                    isExpired ? 'bg-rose-500' : isParentVisitor ? 'bg-amber-500' : isNewJoiner ? 'bg-purple-600' : 'bg-[#f47c20]'
+                    isDenied ? 'bg-rose-600' : isExpired ? 'bg-rose-500' : isParentVisitor ? 'bg-amber-500' : isNewJoiner ? 'bg-purple-600' : 'bg-[#f47c20]'
                 }`} />
             </div>
 
             {/* Main Pass Container */}
             <div className={`w-full rounded-[44px] p-8 border relative z-10 transition-colors ${
-                isExpired 
-                    ? 'bg-rose-50 border-rose-200 shadow-rose-100/50' 
-                    : isParentVisitor 
-                        ? 'bg-amber-50/40 border-amber-200 shadow-sm'
-                        : isNewJoiner
-                            ? 'bg-purple-50/40 border-purple-200 shadow-sm'
-                            : 'bg-slate-50 border-slate-100 shadow-sm'
+                isDenied
+                    ? 'bg-rose-50 border-rose-300 shadow-rose-100/50'
+                    : isExpired 
+                        ? 'bg-rose-50 border-rose-200 shadow-rose-100/50' 
+                        : isParentVisitor 
+                            ? 'bg-amber-50/40 border-amber-200 shadow-sm'
+                            : isNewJoiner
+                                ? 'bg-purple-50/40 border-purple-200 shadow-sm'
+                                : 'bg-slate-50 border-slate-100 shadow-sm'
             }`}>
+                {/* Denial Alert Ribbon */}
+                {isDenied && (
+                    <div className="bg-rose-600 text-white rounded-2xl p-3 mb-6 flex items-center gap-3 shadow-md">
+                        <XCircle className="w-6 h-6 flex-shrink-0 text-white" />
+                        <div>
+                            <p className="font-black text-[11px] uppercase tracking-wider leading-tight">Access Denied</p>
+                            <p className="text-[9px] font-bold opacity-90 leading-tight mt-0.5">{denialReason || 'Monthly pass limit reached by college policy'}</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Identity Header */}
                 <div className={`flex items-center gap-6 mb-8 pb-8 border-b ${
-                    isExpired ? 'border-rose-200/50' : isParentVisitor ? 'border-amber-200/50' : isNewJoiner ? 'border-purple-200/50' : 'border-slate-200/50'
+                    isDenied || isExpired ? 'border-rose-200/50' : isParentVisitor ? 'border-amber-200/50' : isNewJoiner ? 'border-purple-200/50' : 'border-slate-200/50'
                 }`}>
-                    <div className="w-20 h-20 rounded-[22px] overflow-hidden flex-shrink-0 shadow-md border-2 border-white bg-[#fad6bd]">
+                    <div className={`w-20 h-20 rounded-[22px] overflow-hidden flex-shrink-0 shadow-md border-2 ${
+                        isDenied ? 'border-rose-400 bg-rose-100' : 'border-white bg-[#fad6bd]'
+                    }`}>
                         {photoUrl ? (
-                            <img src={photoUrl} crossOrigin="anonymous" alt="Profile" className={`w-full h-full object-cover ${isExpired ? 'grayscale-[0.4]' : ''}`} />
+                            <img src={photoUrl} crossOrigin="anonymous" alt="Profile" className={`w-full h-full object-cover ${isDenied ? 'grayscale' : isExpired ? 'grayscale-[0.4]' : ''}`} />
                         ) : isParentVisitor ? (
                             <div className="w-full h-full bg-gradient-to-br from-amber-400 to-[#f47c20] flex items-center justify-center text-white font-black text-2xl">
                                 <Users className="w-10 h-10" />
@@ -89,25 +106,27 @@ const DailyDigitalPass = React.forwardRef(({
                         )}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h2 className={`font-[900] text-[20px] leading-tight break-words uppercase ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{fullName}</h2>
+                        <h2 className={`font-[900] text-[20px] leading-tight break-words uppercase ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{fullName}</h2>
                         <p className={`font-bold text-[11px] tracking-widest mt-1 uppercase ${
-                            isExpired ? 'text-rose-400' : isParentVisitor ? 'text-amber-700' : isNewJoiner ? 'text-purple-700' : 'text-slate-400'
+                            isDenied || isExpired ? 'text-rose-400' : isParentVisitor ? 'text-amber-700' : isNewJoiner ? 'text-purple-700' : 'text-slate-400'
                         }`}>
                             {isVisitorPass ? `PASS ID: ${studentData?.student_id || 'ACTIVE'}` : `ID: ${studentData?.student_id || 'N/A'}`}
                         </p>
                         <div className="mt-2 flex items-center gap-2">
                             <span className={`px-2 py-0.5 rounded-md text-[9px] font-black border uppercase ${
-                                isExpired 
-                                    ? 'bg-rose-100 text-rose-700 border-rose-200' 
-                                    : isParentVisitor 
-                                        ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                        : isNewJoiner 
-                                            ? 'bg-purple-100 text-purple-800 border-purple-200'
-                                            : 'bg-white text-[#7e22ce] border-purple-100'
+                                isDenied
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                    : isExpired 
+                                        ? 'bg-rose-100 text-rose-700 border-rose-200' 
+                                        : isParentVisitor 
+                                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                            : isNewJoiner 
+                                                ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                                : 'bg-white text-[#7e22ce] border-purple-100'
                             }`}>
-                                {isParentVisitor ? 'PARENT / VISITOR' : isNewJoiner ? 'NEW ADMISSION' : deptShort}
+                                {isDenied ? 'DENIED / LIMIT REACHED' : isParentVisitor ? 'PARENT / VISITOR' : isNewJoiner ? 'NEW ADMISSION' : deptShort}
                             </span>
-                            <span className={`text-[9px] font-bold uppercase tracking-widest ${isExpired ? 'text-rose-300' : 'text-slate-400'}`}>
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
                                 {isVisitorPass ? todayDate : `BATCH ${studentData?.batch || 'N/A'}`}
                             </span>
                         </div>
@@ -170,26 +189,26 @@ const DailyDigitalPass = React.forwardRef(({
                         </div>
                     </div>
                 ) : (
-                    <div className={`grid grid-cols-2 gap-x-8 gap-y-6 pb-8 mb-8 border-b ${isExpired ? 'border-rose-200/50' : 'border-slate-200/50'}`}>
+                    <div className={`grid grid-cols-2 gap-x-8 gap-y-6 pb-8 mb-8 border-b ${isDenied || isExpired ? 'border-rose-200/50' : 'border-slate-200/50'}`}>
                         <div className="col-span-2">
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Official Email</p>
-                            <p className={`text-[14px] font-[900] truncate break-all ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.email || 'N/A'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Official Email</p>
+                            <p className={`text-[14px] font-[900] truncate break-all ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.email || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Contact</p>
-                            <p className={`text-[14px] font-[900] ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.contact_number || 'N/A'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Contact</p>
+                            <p className={`text-[14px] font-[900] ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.contact_number || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Gender</p>
-                            <p className={`text-[14px] font-[900] uppercase ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.gender || 'N/A'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Gender</p>
+                            <p className={`text-[14px] font-[900] uppercase ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.gender || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Entry Gate</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Entry Gate</p>
                             <p className={`text-[14px] font-[900] text-[#1a2b3c]`}>{formattedGate}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Logistics</p>
-                            <p className={`text-[14px] font-[900] ${isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || studentData?.hostel_type || 'Day Scholar'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Logistics</p>
+                            <p className={`text-[14px] font-[900] ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || studentData?.hostel_type || 'Day Scholar'}</p>
                         </div>
                     </div>
                 )}
@@ -198,17 +217,31 @@ const DailyDigitalPass = React.forwardRef(({
                 <div className="mt-8 pt-8 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            isParentVisitor ? 'bg-amber-100 text-amber-700' : isNewJoiner ? 'bg-purple-100 text-purple-700' : 'bg-purple-50 text-[#7e22ce]'
+                            isDenied
+                                ? 'bg-rose-100 text-rose-700'
+                                : isParentVisitor 
+                                    ? 'bg-amber-100 text-amber-700' 
+                                    : isNewJoiner 
+                                        ? 'bg-purple-100 text-purple-700' 
+                                        : 'bg-purple-50 text-[#7e22ce]'
                         }`}>
-                            <ShieldCheck className="w-6 h-6" />
+                            {isDenied ? <XCircle className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
                         </div>
                         <div>
                             <p className={`font-black text-[11px] leading-none mb-0.5 uppercase tracking-tighter ${
-                                isParentVisitor ? 'text-amber-800' : isNewJoiner ? 'text-purple-800' : 'text-[#7e22ce]'
+                                isDenied 
+                                    ? 'text-rose-800'
+                                    : isParentVisitor 
+                                        ? 'text-amber-800' 
+                                        : isNewJoiner 
+                                            ? 'text-purple-800' 
+                                            : 'text-[#7e22ce]'
                             }`}>
-                                {isVisitorPass ? 'Official Gate Auth' : 'Verified VID'}
+                                {isDenied ? 'ACCESS DENIED' : isVisitorPass ? 'Official Gate Auth' : 'Verified VID'}
                             </p>
-                            <p className="text-slate-400 font-bold text-[8px] uppercase tracking-[0.2em]">Institutional Security</p>
+                            <p className={`font-bold text-[8px] uppercase tracking-[0.2em] ${isDenied ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {isDenied ? 'Policy Violation Logged' : 'Institutional Security'}
+                            </p>
                         </div>
                     </div>
                 </div>

@@ -129,15 +129,92 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
     );
 
     useEffect(() => {
-        if (warning && !isAcknowledged) {
+        if (isDenied || (warning && !isAcknowledged)) {
             // Play warning sound
             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
             audio.volume = 0.6;
             audio.play().catch(() => {});
         }
-    }, [warning, isAcknowledged]);
+    }, [warning, isAcknowledged, isDenied]);
 
-    // If there's a warning and it hasn't been acknowledged, show the Dedicated Warning Page
+    // Dedicated ACCESS DENIED screen for limit reached or rejected requests
+    if (isDenied) {
+        return (
+            <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center p-6 bg-gradient-to-br from-rose-950 via-rose-900 to-black font-sans h-screen overflow-y-auto">
+                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none overflow-hidden">
+                    <Octagon className="w-[800px] h-[800px] absolute -top-40 -left-40 animate-pulse text-rose-500" />
+                    <Octagon className="w-[600px] h-[600px] absolute -bottom-20 -right-20 animate-pulse text-rose-500" />
+                </div>
+
+                <div className="relative z-10 w-full max-w-sm flex flex-col items-center text-center animate-in zoom-in duration-500 my-auto py-8">
+                    <div className="relative mb-8">
+                        <div className="absolute inset-0 bg-rose-500/20 rounded-[40px] animate-ping scale-110" />
+                        <div className="w-36 h-36 bg-rose-500/20 backdrop-blur-3xl rounded-[40px] flex items-center justify-center border-4 border-rose-500/40 shadow-2xl relative z-20">
+                            <XCircle className="w-20 h-20 text-rose-400 animate-bounce" />
+                        </div>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-black uppercase tracking-[0.2em] mb-4">
+                        <span>Access Denied</span>
+                    </div>
+
+                    <h1 className="text-3xl font-black text-white tracking-tight uppercase mb-3 drop-shadow-md">
+                        Pass Rejected
+                    </h1>
+                    
+                    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[32px] p-6 mb-8 w-full shadow-2xl text-left">
+                        <div className="flex items-start gap-3 mb-4">
+                            <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-white text-sm font-black leading-snug">
+                                    {warning || customError || "Monthly pass limit has been reached for this student category."}
+                                </p>
+                                <p className="text-white/60 text-[11px] font-medium mt-1 leading-relaxed">
+                                    Entry or exit authorization cannot be granted. This request was rejected by institutional policy.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="h-px bg-white/10 w-full my-4" />
+
+                        <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-center text-white/80">
+                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Student Name</span>
+                                <span className="font-bold text-white">{studentData?.full_name || 'Student'}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-white/80">
+                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Student ID</span>
+                                <span className="font-bold text-white">{studentData?.student_id || studentData?.id || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-white/80">
+                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Gate</span>
+                                <span className="font-bold text-white">{formattedGate}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-white/80">
+                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Status</span>
+                                <span className="font-black text-rose-400 uppercase tracking-widest">Rejected / Denied</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 w-full">
+                        <button
+                            onClick={onNextScan}
+                            className="w-full py-5 bg-white text-rose-900 rounded-[24px] font-black text-xs tracking-[0.2em] uppercase shadow-[0_10px_40px_rgba(0,0,0,0.2)] active:scale-[0.98] transition-all hover:bg-rose-50 cursor-pointer"
+                        >
+                            Return to Dashboard
+                        </button>
+                        
+                        <p className="text-white/40 text-[9px] font-bold uppercase tracking-widest text-center">
+                            Logged in security audit records
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // If there's an informational warning and it hasn't been acknowledged, show the Dedicated Warning Page
     if (warning && !isAcknowledged) {
         return (
             <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center p-6 bg-gradient-to-br from-[#f47c20] to-[#e76f51] font-sans h-screen overflow-hidden">
@@ -155,7 +232,7 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                     </div>
 
                     <h1 className="text-4xl font-black text-white tracking-tight uppercase mb-4 drop-shadow-md">
-                        Limit Reached
+                        Notice
                     </h1>
                     
                     <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[32px] p-8 mb-10 w-full shadow-2xl">
@@ -164,14 +241,14 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                         </p>
                         <div className="h-px bg-white/20 w-16 mx-auto mb-4" />
                         <p className="text-white/80 text-[10px] font-bold uppercase tracking-[0.2em] leading-relaxed">
-                            Your monthly scan quota has been exceeded. Please be informed that your activities are being specifically monitored.
+                            Please be informed that campus security regulations apply to this entry/exit.
                         </p>
                     </div>
 
                     <div className="space-y-4 w-full">
                         <button
                             onClick={() => setIsAcknowledged(true)}
-                            className="w-full py-6 bg-white text-[#f47c20] rounded-[24px] font-black text-sm tracking-[0.2em] uppercase shadow-[0_10px_40px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all hover:shadow-none"
+                            className="w-full py-6 bg-white text-[#f47c20] rounded-[24px] font-black text-sm tracking-[0.2em] uppercase shadow-[0_10px_40px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all hover:shadow-none cursor-pointer"
                         >
                             I Understand & Continue
                         </button>
@@ -195,6 +272,8 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                     gateName={formattedGate}
                     verifiedAt={verifiedAt}
                     isExpired={isExpired}
+                    isDenied={isDenied}
+                    denialReason={warning || customError}
                     isVisitorPass={isVisitorPass}
                     isParentVisitor={isParentVisitor}
                     isNewJoiner={isNewJoiner}
@@ -423,7 +502,11 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                             </div>
                             <div className="col-span-2 bg-[#f8f9fb] p-4 rounded-2xl">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pass Validity</p>
-                                <p className="text-[11px] font-black text-[#1a2b3c]">Valid Today Until 11:59 PM ({format(new Date(), 'dd MMM yyyy')})</p>
+                                <p className={`text-[11px] font-black ${isDenied ? 'text-rose-600' : 'text-[#1a2b3c]'}`}>
+                                    {isDenied 
+                                        ? 'Access Denied • No Pass Issued' 
+                                        : `Valid Today Until 11:59 PM (${format(new Date(), 'dd MMM yyyy')})`}
+                                </p>
                             </div>
                         </div>
 
@@ -437,6 +520,11 @@ const VerificationResult = ({ studentData, gateName, verifiedAt, onNextScan, war
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                     <span>Generating Gate Pass...</span>
+                                </>
+                            ) : isDenied ? (
+                                <>
+                                    <XCircle className="w-5 h-5 text-rose-400" />
+                                    <span>Pass Denied (Not Issued)</span>
                                 </>
                             ) : (
                                 <>
