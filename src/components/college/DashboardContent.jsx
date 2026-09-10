@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, AlertTriangle, UserPlus, BarChart2, Zap, GraduationCap, FileText, CheckCircle2, Loader2, LogOut, Info, User, X, Calendar, MapPin, ChevronRight, Plus } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { formatDistanceToNow, format, isAfter, setHours, setMinutes } from 'date-fns';
 import DailyDigitalPass from '../student/DailyDigitalPass';
 
@@ -55,35 +56,25 @@ const DashboardContent = ({ collegeData, onNavigate }) => {
                 .from('guards')
                 .select('*', { count: 'exact', head: true });
 
-            // 3. Movement Logs & Scans Count
-            const { count: scansCount, data: recentLogs } = await supabase
-                .from('movement_logs')
-                .select('*', { count: 'exact' })
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            if (recentLogs) {
-                setRecentActivity(recentLogs);
-            }
+            // 3. Combined Movement Logs & Scans
+            const combinedLogs = await fetchCombinedMovementLogs({ limit: 50 });
+            setRecentActivity(combinedLogs.slice(0, 5));
 
             // 4. Active Passes Today
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
 
-            const { data: todayLogs } = await supabase
-                .from('movement_logs')
-                .select('*')
-                .gte('created_at', todayStart.toISOString())
-                .order('created_at', { ascending: false });
-
-            const activeList = todayLogs || [];
+            const activeList = combinedLogs.filter(l => {
+                const date = l.created_at ? new Date(l.created_at) : new Date();
+                return date >= todayStart;
+            });
             setActiveStudentDetails(activeList);
 
             setStats({
                 totalStudents: studentsCount || 0,
                 totalGuards: guardsCount || 0,
                 activePasses: activeList.length,
-                totalScans: scansCount || 0
+                totalScans: combinedLogs.length
             });
 
             setHealth({
@@ -106,6 +97,9 @@ const DashboardContent = ({ collegeData, onNavigate }) => {
         const channel = supabase
             .channel('college-dashboard-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchDashboardData(false);
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
                 fetchDashboardData(false);
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {

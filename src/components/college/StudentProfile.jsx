@@ -5,6 +5,7 @@ import {
     CalendarDays, Hash, BadgeCheck, Building, Eye
 } from 'lucide-react';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { format, formatDistanceToNow } from 'date-fns';
 import VerificationResult from '../student/VerificationResult';
 
@@ -67,17 +68,15 @@ const StudentProfile = ({ collegeData, studentId, onBack }) => {
                 };
                 setStudent(sData);
 
-                // Fetch movement logs for this student
+                // Fetch combined movement logs for this student
                 const sIdentifier = studentRow.student_id || studentRow.id;
-                const { data: movementLogs } = await supabase
-                    .from('movement_logs')
-                    .select('*, guard_gates:access_point_id(id, name)')
-                    .eq('student_id', sIdentifier)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
+                const combined = await fetchCombinedMovementLogs({
+                    studentId: sIdentifier,
+                    limit: 30
+                });
 
-                if (movementLogs) {
-                    setLogs(movementLogs);
+                if (combined) {
+                    setLogs(combined);
                 }
             }
         } catch (err) {

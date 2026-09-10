@@ -10,6 +10,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { format } from 'date-fns';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import VerificationResult from '../student/VerificationResult';
 
 const GuardHome = ({ guardData }) => {
@@ -359,16 +360,12 @@ const GuardHome = ({ guardData }) => {
 
     const fetchStatsAndRequests = async () => {
         try {
-            // Total Scans & Recent Verified Activities
-            const { data: logs, count } = await supabase
-                .from('movement_logs')
-                .select('*, guard_gates:access_point_id(id, name)', { count: 'exact' })
-                .order('created_at', { ascending: false })
-                .limit(10);
+            // Total Scans & Recent Verified Activities from combined logs
+            const combinedLogs = await fetchCombinedMovementLogs({ limit: 10 });
 
-            if (logs) {
-                setActivities(logs);
-                setStats(prev => ({ ...prev, totalScans: count || logs.length }));
+            if (combinedLogs) {
+                setActivities(combinedLogs);
+                setStats(prev => ({ ...prev, totalScans: combinedLogs.length }));
             }
 
             setConnectionStatus('safe');
@@ -385,6 +382,9 @@ const GuardHome = ({ guardData }) => {
         const channel = supabase
             .channel('guard-home-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchStatsAndRequests();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
                 fetchStatsAndRequests();
             })
             .subscribe();

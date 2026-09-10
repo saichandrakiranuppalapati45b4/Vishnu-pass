@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Clock, User, ShieldCheck, ShieldAlert, MoreHorizontal, Loader2, ChevronLeft, CheckCircle2, XCircle, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { format, isToday, isYesterday } from 'date-fns';
 
 const GuardHistory = ({ guardData, onBack }) => {
@@ -13,15 +14,8 @@ const GuardHistory = ({ guardData, onBack }) => {
 
     const fetchHistory = async () => {
         try {
-            const { data, error } = await supabase
-                .from('movement_logs')
-                .select('*, guard_gates:access_point_id(id, name)')
-                .order('created_at', { ascending: false })
-                .limit(100);
-
-            if (!error && data) {
-                setLogs(data);
-            }
+            const combined = await fetchCombinedMovementLogs({ limit: 100 });
+            setLogs(combined);
         } catch (error) {
             console.error("Error fetching history", error);
         } finally {
@@ -35,6 +29,9 @@ const GuardHistory = ({ guardData, onBack }) => {
         const channel = supabase
             .channel('guard-history-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchHistory();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
                 fetchHistory();
             })
             .subscribe();

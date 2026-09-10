@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, User, ArrowRight, LogIn, LogOut, CheckCircle2, MapPin, Clock, Zap, RefreshCw } from 'lucide-react';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -29,21 +30,11 @@ const Home = ({ studentData, onNotificationClick }) => {
         // Fetch recent movement logs
         const fetchLogs = async () => {
             try {
-                const queryBuilder = supabase
-                    .from('movement_logs')
-                    .select('*, guard_gates:access_point_id(id, name)');
-
-                if (studentData.student_id) {
-                    queryBuilder.eq('student_id', studentData.student_id);
-                }
-
-                const { data, error } = await queryBuilder
-                    .order('created_at', { ascending: false })
-                    .limit(5);
-
-                if (!error && data) {
-                    setLogs(data);
-                }
+                const combined = await fetchCombinedMovementLogs({
+                    studentId: studentData.student_id || studentData.id,
+                    limit: 5
+                });
+                setLogs(combined);
             } catch (err) {
                 console.error("Error fetching logs: ", err);
             } finally {
@@ -54,10 +45,13 @@ const Home = ({ studentData, onNotificationClick }) => {
         fetchNotificationsCount();
         fetchLogs();
 
-        // Subscribe to realtime updates for movement_logs
+        // Subscribe to realtime updates for movement_logs and scan_sessions
         const channel = supabase
             .channel(`student-home-${studentData.student_id || studentData.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchLogs();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
                 fetchLogs();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {

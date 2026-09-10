@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, Mail, Phone, MapPin, Clock, Calendar, Shield, CreditCard, Droplets } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import VerificationResult from '../student/VerificationResult';
 
 // Helper function to generate a consistent color from a name
@@ -72,13 +73,8 @@ const GuardProfile = ({ collegeData, guard, onBack, onEdit }) => {
     useEffect(() => {
         const fetchActivity = async () => {
             try {
-                const { data } = await supabase
-                    .from('movement_logs')
-                    .select('*, guard_gates:access_point_id(id, name)')
-                    .order('created_at', { ascending: false })
-                    .limit(5);
-
-                if (data) setRecentActivity(data);
+                const combined = await fetchCombinedMovementLogs({ limit: 10 });
+                if (combined) setRecentActivity(combined);
             } catch (err) {
                 console.error("Error fetching guard activity:", err);
             } finally {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronDown, TrendingUp, Clock, ArrowUpRight, Loader2, X, Filter, Search, Eye, ShieldCheck, ChevronRight } from 'lucide-react';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { formatDistanceToNow, format } from 'date-fns';
 import VerificationResult from '../student/VerificationResult';
 
@@ -151,20 +152,15 @@ const Reports = ({ collegeData }) => {
     const fetchReports = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('movement_logs')
-                .select('*, guard_gates:access_point_id(id, name)')
-                .order('created_at', { ascending: false });
+            const combined = await fetchCombinedMovementLogs({ limit: 500 });
 
-            if (error) throw error;
-
-            const fetchedLogs = (data || []).map(d => ({
+            const fetchedLogs = (combined || []).map(d => ({
                 id: d.id,
                 ...d,
                 gateName: d.guard_gates?.name ? d.guard_gates.name.replace(/\b\w/g, c => c.toUpperCase()) : (d.gateName || 'Main Campus Gate'),
-                studentName: d.user_name || d.student_id,
-                studentId: d.student_id,
-                movementType: d.movement_type,
+                studentName: d.user_name || d.studentName || d.student_id,
+                studentId: d.student_id || d.studentId,
+                movementType: d.movement_type || d.movementType,
                 scannedAtDate: d.created_at ? new Date(d.created_at) : new Date()
             }));
 
@@ -178,6 +174,20 @@ const Reports = ({ collegeData }) => {
 
     useEffect(() => {
         fetchReports();
+
+        const channel = supabase
+            .channel('college-reports-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchReports();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
+                fetchReports();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     useEffect(() => {

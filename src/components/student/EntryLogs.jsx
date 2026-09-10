@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../config/supabase';
+import { fetchCombinedMovementLogs } from '../../lib/functions';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { ChevronLeft, LogIn, LogOut, Save, Loader2, X, ShieldCheck } from 'lucide-react';
 import VerificationResult from './VerificationResult';
@@ -17,21 +18,11 @@ const EntryLogs = ({ studentData }) => {
 
         const fetchLogs = async () => {
             try {
-                const queryBuilder = supabase
-                    .from('movement_logs')
-                    .select('*, guard_gates:access_point_id(id, name)');
-
-                if (studentData.student_id) {
-                    queryBuilder.eq('student_id', studentData.student_id);
-                }
-
-                const { data, error } = await queryBuilder
-                    .order('created_at', { ascending: false })
-                    .limit(50);
-
-                if (!error && data) {
-                    setLogs(data);
-                }
+                const combined = await fetchCombinedMovementLogs({
+                    studentId: studentData.student_id || studentData.id,
+                    limit: 50
+                });
+                setLogs(combined);
             } catch (err) {
                 console.error("Error fetching entry logs:", err);
             } finally {
@@ -44,6 +35,9 @@ const EntryLogs = ({ studentData }) => {
         const channel = supabase
             .channel(`student-entrylogs-${studentData.student_id || studentData.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
+                fetchLogs();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
                 fetchLogs();
             })
             .subscribe();

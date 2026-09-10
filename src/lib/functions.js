@@ -164,3 +164,113 @@ export const deleteGuardAccount = async ({ id, employeeId, email }) => {
 export const createGuardAccount = async (guardData) => {
   return registerGuardAccount(guardData);
 };
+
+/**
+ * Fetch combined movement logs from movement_logs and completed scan_sessions
+ */
+export const fetchCombinedMovementLogs = async ({ studentId, limit = 50 } = {}) => {
+  try {
+    // 1. Fetch from movement_logs
+    let mQuery = supabase
+      .from('movement_logs')
+      .select('*, guard_gates:access_point_id(id, name)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (studentId) {
+      const sUpper = String(studentId).toUpperCase();
+      const sLower = String(studentId).toLowerCase();
+      if (sUpper === sLower) {
+        mQuery = mQuery.eq('student_id', studentId);
+      } else {
+        mQuery = mQuery.or(`student_id.eq.${studentId},student_id.eq.${sUpper},student_id.eq.${sLower}`);
+      }
+    }
+
+    const { data: movementLogs } = await mQuery;
+
+    // 2. Fetch from scan_sessions
+    let sQuery = supabase
+      .from('scan_sessions')
+      .select('*, guard_gates:gate_id(id, name), students:student_id(full_name, photo_url, department_id, departments(name))')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (studentId) {
+      const sUpper = String(studentId).toUpperCase();
+      const sLower = String(studentId).toLowerCase();
+      if (sUpper === sLower) {
+        sQuery = sQuery.eq('student_id', studentId);
+      } else {
+        sQuery = sQuery.or(`student_id.eq.${studentId},student_id.eq.${sUpper},student_id.eq.${sLower}`);
+      }
+    }
+
+    const { data: scanSessions } = await sQuery;
+
+    // Normalize scan_sessions to match movement_logs structure
+    const normalizedSessions = (scanSessions || [])
+      .filter(s => s.status === 'completed' || s.status === 'approved' || s.status === 'Success' || s.status === 'rejected' || s.status === 'denied')
+      .map(s => {
+        const studentName = s.students?.full_name || s.student_id;
+        const deptName = s.students?.departments?.name || 'Engineering';
+        const isApproved = s.status === 'completed' || s.status === 'approved' || s.status === 'Success';
+        
+        return {
+          id: s.id,
+          user_name: studentName,
+          student_name: studentName,
+          studentName: studentName,
+          student_id: s.student_id,
+          studentId: s.student_id,
+          movement_type: s.movement_type || 'IN',
+          movementType: s.movement_type || 'IN',
+          status: isApproved ? 'Success' : (s.status === 'rejected' ? 'Denied' : s.status),
+          access_point_id: s.gate_id,
+          guard_gates: s.guard_gates,
+          created_at: s.created_at,
+          photoUrl: s.students?.photo_url || null,
+          photo_url: s.students?.photo_url || null,
+          department: deptName,
+          departments: s.students?.departments || { name: deptName },
+          warning: s.warning,
+          isScanSession: true
+        };
+      });
+
+    // Merge and deduplicate by student_id and timestamp within 5 seconds
+    const allLogs = [...(movementLogs || []).map(l => ({
+      ...l,
+      studentName: l.user_name || l.student_id,
+      studentId: l.student_id,
+      movementType: l.movement_type
+    }))];
+    
+    for (const sess of normalizedSessions) {
+      const sessTime = new Date(sess.created_at).getTime();
+      const isDuplicate = allLogs.some(l => {
+        const lTime = new Date(l.created_at).getTime();
+        const lStudent = (l.student_id || l.studentId || '').toLowerCase();
+        const sStudent = (sess.student_id || '').toLowerCase();
+        const lType = (l.movement_type || l.movementType || '').toUpperCase();
+        const sType = (sess.movement_type || '').toUpperCase();
+
+        return lStudent === sStudent && 
+               lType === sType && 
+               Math.abs(lTime - sessTime) < 5000;
+      });
+      if (!isDuplicate) {
+        allLogs.push(sess);
+      }
+    }
+
+    // Sort by created_at descending
+    allLogs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return allLogs.slice(0, limit);
+  } catch (err) {
+    console.warn('Error fetching combined logs:', err);
+    return [];
+  }
+};
+

@@ -5,9 +5,8 @@ import { Scanner } from '@yudiel/react-qr-scanner';
 import VerificationResult from './VerificationResult';
 
 const ScanScreen = ({ studentData, onBack }) => {
-    const [status, setStatus] = useState('idle'); // idle -> requesting (camera open) -> approved (can scan) -> completed
+    const [status, setStatus] = useState('idle'); // idle -> requesting (camera open) -> completed
     const [timeLeft, setTimeLeft] = useState(25);
-    const [sessionId, setSessionId] = useState(null);
     const [error, setError] = useState(null);
     const [movementType, setMovementType] = useState(null);
     const [gateData, setGateData] = useState(null);
@@ -15,15 +14,10 @@ const ScanScreen = ({ studentData, onBack }) => {
     const [sessionWarning, setSessionWarning] = useState(null);
     const [isLimitReached, setIsLimitReached] = useState(false);
 
-    const sessionIdRef = useRef(null);
     const statusRef = useRef('idle');
     const movementTypeRef = useRef(null);
     const limitReachedRef = useRef(false);
     const scanLock = useRef(false);
-
-    useEffect(() => {
-        sessionIdRef.current = sessionId;
-    }, [sessionId]);
 
     useEffect(() => {
         statusRef.current = status;
@@ -32,7 +26,7 @@ const ScanScreen = ({ studentData, onBack }) => {
     // Countdown Timer logic
     useEffect(() => {
         let timer;
-        if (status === 'requesting' || status === 'approved') {
+        if (status === 'requesting') {
             timer = setInterval(() => {
                 setTimeLeft(prev => {
                     if (prev <= 1) {
@@ -45,69 +39,6 @@ const ScanScreen = ({ studentData, onBack }) => {
         }
         return () => clearInterval(timer);
     }, [status]);
-
-    // Cleanup session on expire
-    useEffect(() => {
-        if (status === 'expired' && sessionId) {
-            supabase
-                .from('scan_sessions')
-                .update({ status: 'expired' })
-                .eq('id', sessionId)
-                .then();
-        }
-    }, [status, sessionId]);
-
-    // Realtime subscription for Guard Approval
-    useEffect(() => {
-        if (!sessionId) return;
-
-        const channel = supabase
-            .channel(`scan-session-${sessionId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'scan_sessions',
-                filter: `id=eq.${sessionId}`
-            }, (payload) => {
-                const data = payload.new;
-                if (!data) return;
-
-                if (data.warning) setSessionWarning(data.warning);
-
-                if (data.status === 'approved') {
-                    setStatus('approved');
-                } else if (data.status === 'completed' || data.status === 'success') {
-                    setStatus('completed');
-                    setVerifiedAt(new Date().toISOString());
-                } else if (data.status === 'expired') {
-                    setStatus('expired');
-                } else if (data.status === 'rejected' || data.status === 'denied') {
-                    setStatus('completed');
-                    setVerifiedAt(new Date().toISOString());
-                }
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [sessionId]);
-
-    // Unmount cleanup logic
-    useEffect(() => {
-        return () => {
-            const currentSession = sessionIdRef.current;
-            const currentStatus = statusRef.current;
-
-            if (currentSession && (currentStatus === 'requesting' || currentStatus === 'approved' || currentStatus === 'pending')) {
-                supabase
-                    .from('scan_sessions')
-                    .update({ status: 'cancelled' })
-                    .eq('id', currentSession)
-                    .then();
-            }
-        };
-    }, []);
 
     const handleRequestAccess = async (type) => {
         setError(null);
@@ -161,26 +92,9 @@ const ScanScreen = ({ studentData, onBack }) => {
 
             setIsLimitReached(isLimitReachedCurrent);
             limitReachedRef.current = isLimitReachedCurrent;
-            
+            setSessionWarning(warningText);
             setStatus('requesting');
             setTimeLeft(25);
-
-            // Create pending session in Supabase scan_sessions
-            const { data: newSession, error: createError } = await supabase
-                .from('scan_sessions')
-                .insert([{
-                    student_id: studentIdentifier,
-                    status: 'pending',
-                    movement_type: type,
-                    warning: warningText
-                }])
-                .select()
-                .single();
-
-            if (createError) throw createError;
-
-            setSessionId(newSession.id);
-            setSessionWarning(warningText);
 
         } catch (err) {
             setError(`Request Failed: ${err.message || 'Please try again.'}`);
@@ -192,10 +106,7 @@ const ScanScreen = ({ studentData, onBack }) => {
         if (!result || scanLock.current) return;
 
         const currentStatus = statusRef.current;
-        const currentSessionId = sessionIdRef.current;
-
         if (currentStatus !== 'requesting') return;
-        if (!currentSessionId) return;
 
         let rawValue = typeof result === 'string' ? result : (result[0]?.rawValue || result?.text || result?.rawValue);
         if (!rawValue) return;
@@ -241,31 +152,44 @@ const ScanScreen = ({ studentData, onBack }) => {
 
             // Automatic Instant Approval upon scanning Gate QR
             const newStatus = limitReachedRef.current ? 'rejected' : 'completed';
+            const resolvedAccessPointId = finalGateId || (isUuid ? scannedGateId : null);
+            const studentIdentifier = studentData.student_id || studentData.id;
 
-            // Update session in Supabase scan_sessions
-            await supabase
-                .from('scan_sessions')
-                .update({
-                    status: newStatus,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', currentSessionId);
+            // Direct INSERT into Supabase scan_sessions (Students have INSERT permissions)
+            try {
+                await supabase
+                    .from('scan_sessions')
+                    .insert([{
+                        student_id: studentIdentifier,
+                        gate_id: isUuid ? resolvedAccessPointId : null,
+                        status: newStatus,
+                        movement_type: movementTypeRef.current || 'IN',
+                        warning: sessionWarning || null
+                    }]);
+            } catch (sErr) {
+                console.warn("scan_sessions insert error:", sErr);
+            }
 
-            // Record log in movement_logs
+            // Also attempt to insert directly into movement_logs
             if (newStatus === 'completed') {
-                await supabase.from('movement_logs').insert([{
-                    user_name: studentData.full_name,
-                    student_id: studentData.student_id || studentData.id,
-                    movement_type: movementTypeRef.current || 'IN',
-                    status: 'Success',
-                    access_point_id: finalGateId || (isUuid ? scannedGateId : null)
-                }]);
+                try {
+                    await supabase.from('movement_logs').insert([{
+                        user_name: studentData.full_name,
+                        student_id: studentIdentifier,
+                        movement_type: movementTypeRef.current || 'IN',
+                        status: 'Success',
+                        access_point_id: isUuid ? resolvedAccessPointId : null
+                    }]);
+                } catch (mErr) {
+                    console.warn("Direct movement_logs insert info:", mErr);
+                }
             }
             
             setVerifiedAt(new Date().toISOString());
             setStatus('completed');
 
         } catch (err) {
+            console.error("Verification error:", err);
             setError(err?.message || "Verification failed");
             setStatus('requesting');
         } finally {
@@ -432,14 +356,7 @@ const ScanScreen = ({ studentData, onBack }) => {
 
                             <div className="flex items-center justify-between w-full px-2">
                                 <button
-                                    onClick={() => {
-                                        if (sessionIdRef.current && studentData?.collegeId) {
-                                            updateDoc(doc(db, `colleges/${studentData.collegeId}/scanLogs`, sessionIdRef.current), {
-                                                status: 'cancelled'
-                                            }).catch(console.error);
-                                        }
-                                        setStatus('idle');
-                                    }}
+                                    onClick={() => setStatus('idle')}
                                     className="px-6 py-3 bg-gray-50 text-gray-500 font-bold rounded-2xl active:scale-95 transition-all text-[10px] tracking-[0.1em] uppercase border border-gray-100"
                                 >
                                     Cancel
