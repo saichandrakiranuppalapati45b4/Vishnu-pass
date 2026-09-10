@@ -33,23 +33,11 @@ const VirtualIdCard = ({ studentData }) => {
             if (!studentData?.photo_url) return;
 
             try {
-                // Extract path from public URL to use the native Supabase SDK (handles CORS implicitly)
-                const match = studentData.photo_url.match(/\/object\/public\/students\/(.+)$/);
-
-                if (match && match[1]) {
-                    // Firebase Storage logic should go here, but since photo_url is typically a public URL we can just fetch it.
-                    // For the sake of migration, we'll keep the fallback proxy fetch for now.
-                    const res = await fetch(studentData.photo_url);
-                    if (!res.ok) throw new Error("Fetch failed");
-                    const blob = await res.blob();
-                    setLocalPhotoUrl(URL.createObjectURL(blob));
-                } else {
-                    // Fallback proxy fetch
-                    const res = await fetch(studentData.photo_url);
-                    if (!res.ok) throw new Error("Fetch failed");
-                    const blob = await res.blob();
-                    setLocalPhotoUrl(URL.createObjectURL(blob));
-                }
+                // Fetch photo URL directly to create local object URL for canvas/export
+                const res = await fetch(studentData.photo_url);
+                if (!res.ok) throw new Error("Fetch failed");
+                const blob = await res.blob();
+                setLocalPhotoUrl(URL.createObjectURL(blob));
             } catch (err) {
                 setLocalPhotoUrl(null);
             }

@@ -24,6 +24,30 @@ export const verifyQrToken = async ({ token }) => {
   };
 };
 
+const extractFunctionError = async (error, data, defaultMsg) => {
+  if (data?.error) return typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+  if (data?.message) return typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+
+  if (error) {
+    if (error.context) {
+      try {
+        const body = typeof error.context.json === 'function' ? await error.context.json() : error.context;
+        if (body?.error) return typeof body.error === 'string' ? body.error : JSON.stringify(body.error);
+        if (body?.message) return typeof body.message === 'string' ? body.message : JSON.stringify(body.message);
+      } catch {
+        try {
+          const text = typeof error.context.text === 'function' ? await error.context.text() : null;
+          if (text) return text;
+        } catch {}
+      }
+    }
+    if (error.message && error.message !== 'Edge Function returned a non-2xx status code') {
+      return error.message;
+    }
+  }
+  return defaultMsg || 'An error occurred while communicating with the server';
+};
+
 /**
  * Register a student account with Supabase Auth credentials and database record
  */
@@ -33,14 +57,9 @@ export const registerStudentAccount = async (studentData) => {
       body: studentData,
     });
 
-    if (error) {
-      // In case supabase.functions.invoke wraps an HTTP error
-      const errorMsg = data?.error || error.message || 'Failed to register student authentication credentials';
+    if (error || data?.error) {
+      const errorMsg = await extractFunctionError(error, data, 'Failed to register student authentication credentials');
       throw new Error(errorMsg);
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
     }
 
     return { data: data?.student || data };
@@ -59,13 +78,9 @@ export const deleteStudentAccount = async ({ id, studentId, email }) => {
       body: { id, studentId, email },
     });
 
-    if (error) {
-      const errorMsg = data?.error || error.message || 'Failed to delete student authentication credentials';
+    if (error || data?.error) {
+      const errorMsg = await extractFunctionError(error, data, 'Failed to delete student authentication credentials');
       throw new Error(errorMsg);
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
     }
 
     return { data };
@@ -102,13 +117,9 @@ export const registerGuardAccount = async (guardData) => {
       body: guardData,
     });
 
-    if (error) {
-      const errorMsg = data?.error || error.message || 'Failed to register guard authentication credentials';
+    if (error || data?.error) {
+      const errorMsg = await extractFunctionError(error, data, 'Failed to register guard authentication credentials');
       throw new Error(errorMsg);
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
     }
 
     return { data: data?.guard || data };
@@ -127,13 +138,9 @@ export const deleteGuardAccount = async ({ id, employeeId, email }) => {
       body: { id, employeeId, email },
     });
 
-    if (error) {
-      const errorMsg = data?.error || error.message || 'Failed to delete guard authentication credentials';
+    if (error || data?.error) {
+      const errorMsg = await extractFunctionError(error, data, 'Failed to delete guard authentication credentials');
       throw new Error(errorMsg);
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
     }
 
     return { data };
@@ -157,5 +164,3 @@ export const deleteGuardAccount = async ({ id, employeeId, email }) => {
 export const createGuardAccount = async (guardData) => {
   return registerGuardAccount(guardData);
 };
-
-

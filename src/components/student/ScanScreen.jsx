@@ -239,23 +239,8 @@ const ScanScreen = ({ studentData, onBack }) => {
             const formattedGateName = gateName ? gateName.replace(/\b\w/g, c => c.toUpperCase()) : 'Main Campus Gate';
             setGateData({ id: finalGateId, name: formattedGateName });
 
-            // Fetch Policies for Auto-Approval check
-            let policies = null;
-            const { data: policyData } = await supabase
-                .from('portal_settings')
-                .select('value')
-                .eq('key', 'student_policies')
-                .maybeSingle();
-
-            if (policyData?.value) {
-                policies = typeof policyData.value === 'string' ? JSON.parse(policyData.value) : policyData.value;
-            }
-            const category = studentData.hostel_type === 'hosteler' ? 'hosteler' : 'dayscholar';
-            
-            const isAutoApprovable = (movementTypeRef.current === 'IN') || 
-                                     (movementTypeRef.current === 'OUT' && policies?.[category]?.autoApproveOutpass);
-                                     
-            const newStatus = limitReachedRef.current ? 'rejected' : (isAutoApprovable ? 'completed' : 'approved');
+            // Automatic Instant Approval upon scanning Gate QR
+            const newStatus = limitReachedRef.current ? 'rejected' : 'completed';
 
             // Update session in Supabase scan_sessions
             await supabase
@@ -266,26 +251,19 @@ const ScanScreen = ({ studentData, onBack }) => {
                 })
                 .eq('id', currentSessionId);
 
-            // Also record log in movement_logs
+            // Record log in movement_logs
             if (newStatus === 'completed') {
                 await supabase.from('movement_logs').insert([{
                     user_name: studentData.full_name,
                     student_id: studentData.student_id || studentData.id,
-                    movement_type: movementTypeRef.current,
+                    movement_type: movementTypeRef.current || 'IN',
                     status: 'Success',
                     access_point_id: finalGateId || (isUuid ? scannedGateId : null)
                 }]);
             }
             
-            if (limitReachedRef.current) {
-                setVerifiedAt(new Date().toISOString());
-                setStatus('completed');
-            } else if (isAutoApprovable) {
-                setVerifiedAt(new Date().toISOString());
-                setStatus('completed');
-            } else {
-                setStatus('approved'); // Wait for guard approval
-            }
+            setVerifiedAt(new Date().toISOString());
+            setStatus('completed');
 
         } catch (err) {
             setError(err?.message || "Verification failed");

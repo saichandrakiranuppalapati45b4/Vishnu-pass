@@ -67,21 +67,67 @@ const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
     const handleRegister = async (e) => {
         e.preventDefault();
         setError(null);
-        setIsSubmitting(true);
 
         // Validation
-        if (!isEditMode && formData.password !== formData.confirmPassword) {
-            setError("Passwords do not match.");
-            setIsSubmitting(false);
+        const fullName = formData.fullName.trim();
+        const employeeId = formData.employeeId.trim();
+        const email = formData.email.trim();
+        const contactNumber = formData.contactNumber.trim();
+
+        if (!fullName) {
+            setError("Full name is required.");
             return;
         }
+
+        if (!employeeId) {
+            setError("Employee ID is required.");
+            return;
+        }
+
+        if (!email) {
+            setError("Email address is required.");
+            return;
+        }
+
+        if (!isEditMode) {
+            if (!formData.password) {
+                setError("Password is required.");
+                return;
+            }
+            if (formData.password.length < 6) {
+                setError("Password must be at least 6 characters.");
+                return;
+            }
+            if (formData.password !== formData.confirmPassword) {
+                setError("Passwords do not match.");
+                return;
+            }
+        } else {
+            if (formData.password) {
+                if (formData.password.length < 6) {
+                    setError("New password must be at least 6 characters.");
+                    return;
+                }
+                if (formData.password !== formData.confirmPassword) {
+                    setError("Passwords do not match.");
+                    return;
+                }
+            }
+        }
+
+        if (!contactNumber) {
+            setError("Contact number is required.");
+            return;
+        }
+
+        setIsSubmitting(true);
 
         try {
             let photoUrl = initialData?.photo_url || initialData?.photoUrl || null;
 
             // 1. Upload Photo if selected
             if (photoFile) {
-                const empId = formData.employeeId.trim() || 'guard_' + Date.now();
+                const empId = employeeId || 'guard_' + Date.now();
                 const fileExt = photoFile.name.split('.').pop();
                 const fileName = `${empId}_${Date.now()}.${fileExt}`;
                 photoUrl = await uploadFile('guards', fileName, photoFile);
@@ -90,11 +136,11 @@ const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
             // 2. Auth & Database Record via registerGuardAccount
             await registerGuardAccount({
                 id: initialData?.id,
-                email: formData.email.trim(),
-                password: formData.password,
-                fullName: formData.fullName.trim(),
-                employeeId: formData.employeeId.trim(),
-                contactNumber: formData.contactNumber.trim(),
+                email: email,
+                password: formData.password || undefined,
+                fullName: fullName,
+                employeeId: employeeId,
+                contactNumber: contactNumber,
                 gateId: formData.assignedGate || null,
                 shiftId: formData.shiftType || null,
                 emergencyName: formData.emergencyName.trim(),
@@ -106,9 +152,9 @@ const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
             // 3. Log the action
             await logAuditAction({
                 action: isEditMode ? 'Updated Guard' : 'Registered Guard',
-                resource: formData.employeeId,
+                resource: employeeId,
                 details: {
-                    name: formData.fullName,
+                    name: fullName,
                     gate: gates.find(g => g.id === formData.assignedGate)?.name || 'Unknown',
                     shift: shifts.find(s => s.id === formData.shiftType)?.name || 'Unknown'
                 }
@@ -116,7 +162,7 @@ const RegisterGuard = ({ collegeData, onCancel, initialData }) => {
 
             onCancel();
         } catch (err) {
-            console.error(err);
+            console.error('Error registering guard:', err);
             setError(err.message || 'Failed to register guard. Please try again.');
         } finally {
             setIsSubmitting(false);

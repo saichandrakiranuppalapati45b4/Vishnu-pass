@@ -16,7 +16,6 @@ const GuardHome = ({ guardData }) => {
     const { t } = useLanguage();
     const [stats, setStats] = useState({ totalScans: 0, activePasses: 0 });
     const [activities, setActivities] = useState([]);
-    const [pendingRequests, setPendingRequests] = useState([]);
     const [activeVerification, setActiveVerification] = useState(null);
     const [qrToken, setQrToken] = useState(crypto.randomUUID ? crypto.randomUUID() : `qr_${Date.now()}`);
     const [qrTimeLeft, setQrTimeLeft] = useState(25);
@@ -360,7 +359,7 @@ const GuardHome = ({ guardData }) => {
 
     const fetchStatsAndRequests = async () => {
         try {
-            // 1. Total Scans & Activities
+            // Total Scans & Recent Verified Activities
             const { data: logs, count } = await supabase
                 .from('movement_logs')
                 .select('*, guard_gates:access_point_id(id, name)', { count: 'exact' })
@@ -372,16 +371,6 @@ const GuardHome = ({ guardData }) => {
                 setStats(prev => ({ ...prev, totalScans: count || logs.length }));
             }
 
-            // 2. Pending Requests
-            const { data: requests } = await supabase
-                .from('scan_sessions')
-                .select('*')
-                .in('status', ['pending', 'approved'])
-                .order('created_at', { ascending: false });
-
-            if (requests) {
-                setPendingRequests(requests);
-            }
             setConnectionStatus('safe');
         } catch (e) {
             console.error('Error fetching guard data:', e);
@@ -395,9 +384,6 @@ const GuardHome = ({ guardData }) => {
 
         const channel = supabase
             .channel('guard-home-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'scan_sessions' }, () => {
-                fetchStatsAndRequests();
-            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_logs' }, () => {
                 fetchStatsAndRequests();
             })
@@ -411,36 +397,6 @@ const GuardHome = ({ guardData }) => {
     const handleRefresh = async () => {
         setConnectionStatus('connecting');
         await fetchStatsAndRequests();
-    };
-
-    const handleApprove = async (sessionId) => {
-        try {
-            // Update session status in Supabase
-            const { data: updated } = await supabase
-                .from('scan_sessions')
-                .update({
-                    status: 'completed',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', sessionId)
-                .select()
-                .single();
-
-            // Insert into movement_logs
-            if (updated) {
-                await supabase.from('movement_logs').insert([{
-                    user_name: updated.student_id,
-                    student_id: updated.student_id,
-                    movement_type: updated.movement_type || 'IN',
-                    status: 'Success',
-                    access_point_id: isUuid(guardData?.gate_id) ? guardData.gate_id : null
-                }]);
-            }
-
-            setPendingRequests(prev => prev.filter(r => r.id !== sessionId));
-        } catch (err) {
-            console.error("Approval failed", err);
-        }
     };
 
     const initials = guardData?.full_name
@@ -560,62 +516,6 @@ const GuardHome = ({ guardData }) => {
                     </div>
                 </div>
             </div>
-
-            {/* Pending Requests Queue */}
-            {pendingRequests.length > 0 && (
-                <div className="mt-8 px-6 animate-in slide-in-from-bottom duration-300">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-base font-black text-[#f47c20] tracking-tight">{t('guard.home.accessRequests')}</h3>
-                            <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">{pendingRequests.length}</span>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        {pendingRequests.map(req => (
-                            <div key={req.id} className="bg-white rounded-[24px] p-3 pl-4 border-2 border-[#f47c20]/20 shadow-[0_4px_20px_rgba(244,124,32,0.1)] flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#fff8f6] shadow-sm">
-                                        {req.photoUrl ? (
-                                            <img src={req.photoUrl} alt="Profile" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
-                                                <User className="w-6 h-6" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-black text-gray-800 leading-none mb-1">{req.studentName}</h4>
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                                {req.studentId} • {req.status}
-                                            </p>
-                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase ${
-                                                req.movementType === 'IN' ? 'bg-emerald-100 text-emerald-600' : 
-                                                req.movementType === 'OUT' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                                {req.movementType || req.movement_type}
-                                            </span>
-                                            {req.warning && (
-                                                <span className="flex items-center gap-1 bg-amber-100 text-amber-600 text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase animate-pulse">
-                                                    <Zap className="w-2.5 h-2.5" />
-                                                    Alert
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => handleApprove(req.id)}
-                                    className="h-12 px-6 bg-gradient-to-r from-[#f47c20] to-[#e06b12] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#f47c20]/20 active:scale-95 transition-transform cursor-pointer"
-                                >
-                                    <CheckCircle2 className="w-5 h-5" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* Recent Activity Section */}
             <div className="mt-8 px-6 pb-20">
