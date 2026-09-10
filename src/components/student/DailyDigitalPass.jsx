@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, Users, GraduationCap, Building2, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const DailyDigitalPass = React.forwardRef(({ 
     studentData, 
@@ -14,11 +15,12 @@ const DailyDigitalPass = React.forwardRef(({
     isParentVisitor = false,
     isNewJoiner = false
 }, ref) => {
+    const { t } = useLanguage();
     const initials = studentData?.full_name
         ? studentData.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
         : (isParentVisitor ? 'VP' : isNewJoiner ? 'NJ' : 'ST');
 
-    const fullName = studentData?.full_name || (isVisitorPass ? 'Campus Visitor' : 'Vishnu Student');
+    const fullName = studentData?.full_name || (isVisitorPass ? (t?.('digitalPass.authorizedVisit') || 'Campus Visitor') : 'Vishnu Student');
     const deptFull = studentData?.departments?.name || studentData?.department_name || studentData?.department || 'Department';
     
     // Smart Dept Shortener
@@ -44,17 +46,29 @@ const DailyDigitalPass = React.forwardRef(({
 
     const todayDate = format(new Date(), 'dd MMM yyyy');
 
+    const translate = (key, fallback) => {
+        if (!t) return fallback;
+        const res = t(key);
+        return res === key ? fallback : res;
+    };
+
     return (
         <div ref={ref} className="w-[400px] bg-white p-8 flex flex-col items-center relative overflow-hidden" style={{ borderRadius: '56px' }}>
             {/* Institution Branding */}
             <div className="w-full text-center mb-8 pt-2">
                 <h1 className="text-[#1a2b3c] font-[900] text-[24px] tracking-tighter leading-none uppercase">
-                    Vishnu Institute of Technology
+                    {translate('digitalPass.instituteName', 'Vishnu Institute of Technology')}
                 </h1>
                 <p className={`font-black text-[10px] tracking-[0.4em] mt-2 opacity-80 uppercase ${
                     isDenied ? 'text-rose-600' : isExpired ? 'text-rose-500' : isParentVisitor ? 'text-amber-600' : isNewJoiner ? 'text-purple-600' : 'text-[#f47c20]'
                 }`}>
-                    {isDenied ? 'ACCESS DENIED (LIMIT REACHED)' : isParentVisitor ? 'Official Visitor Gate Pass' : isNewJoiner ? 'New Admission Entry Pass' : `Daily Digital Pass ${isExpired ? '(Expired)' : ''}`}
+                    {isDenied 
+                        ? translate('digitalPass.accessDeniedLimit', 'ACCESS DENIED (LIMIT REACHED)') 
+                        : isParentVisitor 
+                            ? translate('digitalPass.officialVisitorPass', 'Official Visitor Gate Pass') 
+                            : isNewJoiner 
+                                ? translate('digitalPass.newAdmissionPass', 'New Admission Entry Pass') 
+                                : `${translate('digitalPass.dailyDigitalPass', 'Daily Digital Pass')} ${isExpired ? `(${translate('digitalPass.expired', 'Expired')})` : ''}`}
                 </p>
                 <div className={`h-[2px] w-16 mx-auto mt-3 rounded-full opacity-60 ${
                     isDenied ? 'bg-rose-600' : isExpired ? 'bg-rose-500' : isParentVisitor ? 'bg-amber-500' : isNewJoiner ? 'bg-purple-600' : 'bg-[#f47c20]'
@@ -78,8 +92,12 @@ const DailyDigitalPass = React.forwardRef(({
                     <div className="bg-rose-600 text-white rounded-2xl p-3 mb-6 flex items-center gap-3 shadow-md">
                         <XCircle className="w-6 h-6 flex-shrink-0 text-white" />
                         <div>
-                            <p className="font-black text-[11px] uppercase tracking-wider leading-tight">Access Denied</p>
-                            <p className="text-[9px] font-bold opacity-90 leading-tight mt-0.5">{denialReason || 'Monthly pass limit reached by college policy'}</p>
+                            <p className="font-black text-[11px] uppercase tracking-wider leading-tight">
+                                {translate('digitalPass.accessDenied', 'Access Denied')}
+                            </p>
+                            <p className="text-[9px] font-bold opacity-90 leading-tight mt-0.5">
+                                {denialReason || translate('digitalPass.limitReachedPolicy', 'Monthly pass limit reached by college policy')}
+                            </p>
                         </div>
                     </div>
                 )}
@@ -124,7 +142,13 @@ const DailyDigitalPass = React.forwardRef(({
                                                 ? 'bg-purple-100 text-purple-800 border-purple-200'
                                                 : 'bg-white text-[#7e22ce] border-purple-100'
                             }`}>
-                                {isDenied ? 'DENIED / LIMIT REACHED' : isParentVisitor ? 'PARENT / VISITOR' : isNewJoiner ? 'NEW ADMISSION' : deptShort}
+                                {isDenied 
+                                    ? translate('digitalPass.accessDeniedLimit', 'DENIED / LIMIT REACHED') 
+                                    : isParentVisitor 
+                                        ? translate('digitalPass.parentVisitorBadge', 'PARENT / VISITOR') 
+                                        : isNewJoiner 
+                                            ? translate('digitalPass.newAdmissionBadge', 'NEW ADMISSION') 
+                                            : deptShort}
                             </span>
                             <span className={`text-[9px] font-bold uppercase tracking-widest ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
                                 {isVisitorPass ? todayDate : `BATCH ${studentData?.batch || 'N/A'}`}
@@ -137,78 +161,122 @@ const DailyDigitalPass = React.forwardRef(({
                 {isParentVisitor ? (
                     <div className="grid grid-cols-2 gap-x-8 gap-y-6 pb-8 mb-8 border-b border-amber-200/50">
                         <div className="col-span-2">
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Visiting Ward / Student</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.visitingWardLabel', 'Visiting Ward / Student')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.visiting_student || 'Campus Official / Faculty'}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Purpose of Visit</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.purposeLabel', 'Purpose of Visit')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#f47c20]">{studentData?.purpose || 'Campus Visit'}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Contact Number</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.contactNumberLabel', 'Contact Number')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.contact_number || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Total Persons</p>
-                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.persons_count ? `${studentData.persons_count} Person(s)` : '1 Person'}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.totalPersonsLabel', 'Total Persons')}
+                            </p>
+                            <p className="text-[14px] font-[900] text-[#1a2b3c]">
+                                {studentData?.persons_count 
+                                    ? (studentData.persons_count === '1' ? translate('digitalPass.personSingle', '1 Person') : `${studentData.persons_count} ${translate('digitalPass.personPlural', 'Persons')}`)
+                                    : translate('digitalPass.personSingle', '1 Person')}
+                            </p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Vehicle / ID</p>
-                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.vehicle_no || 'None'}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.vehicleLabel', 'Vehicle / ID')}
+                            </p>
+                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.vehicle_no || translate('digitalPass.none', 'None')}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">Entry Gate</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-amber-800/70">
+                                {translate('digitalPass.entryGateLabel', 'Entry Gate')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{formattedGate}</p>
                         </div>
                     </div>
                 ) : isNewJoiner ? (
                     <div className="grid grid-cols-2 gap-x-8 gap-y-6 pb-8 mb-8 border-b border-purple-200/50">
                         <div className="col-span-2">
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Department / Stream</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.departmentLabel', 'Department / Stream')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{deptFull}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Purpose / Action</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.purposeActionLabel', 'Purpose / Action')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#f47c20]">{studentData?.purpose || 'New Admission / Reporting'}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Contact Number</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.contactNumberLabel', 'Contact Number')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.contact_number || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Accompanying</p>
-                            <p className="text-[14px] font-[900] text-[#1a2b3c]">{studentData?.persons_count ? `${studentData.persons_count} Person(s)` : '1 Person'}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.accompanyingLabel', 'Accompanying')}
+                            </p>
+                            <p className="text-[14px] font-[900] text-[#1a2b3c]">
+                                {studentData?.persons_count 
+                                    ? (studentData.persons_count === '1' ? translate('digitalPass.personSingle', '1 Person') : `${studentData.persons_count} ${translate('digitalPass.personPlural', 'Persons')}`)
+                                    : translate('digitalPass.personSingle', '1 Person')}
+                            </p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Entry Gate</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.entryGateLabel', 'Entry Gate')}
+                            </p>
                             <p className="text-[14px] font-[900] text-[#1a2b3c]">{formattedGate}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">Status</p>
-                            <p className="text-[14px] font-[900] text-purple-700">Reporting Active</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5 text-purple-800/70">
+                                {translate('digitalPass.statusLabel', 'Status')}
+                            </p>
+                            <p className="text-[14px] font-[900] text-purple-700">
+                                {translate('digitalPass.reportingActive', 'Reporting Active')}
+                            </p>
                         </div>
                     </div>
                 ) : (
                     <div className={`grid grid-cols-2 gap-x-8 gap-y-6 pb-8 mb-8 border-b ${isDenied || isExpired ? 'border-rose-200/50' : 'border-slate-200/50'}`}>
                         <div className="col-span-2">
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Official Email</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {translate('digitalPass.officialEmailLabel', 'Official Email')}
+                            </p>
                             <p className={`text-[14px] font-[900] truncate break-all ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.email || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Contact</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {translate('digitalPass.contactNumberLabel', 'Contact')}
+                            </p>
                             <p className={`text-[14px] font-[900] ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.contact_number || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Gender</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {translate('digitalPass.genderLabel', 'Gender')}
+                            </p>
                             <p className={`text-[14px] font-[900] uppercase ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.gender || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Entry Gate</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {translate('digitalPass.entryGateLabel', 'Entry Gate')}
+                            </p>
                             <p className={`text-[14px] font-[900] text-[#1a2b3c]`}>{formattedGate}</p>
                         </div>
                         <div>
-                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>Logistics</p>
-                            <p className={`text-[14px] font-[900] ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || studentData?.hostel_type || 'Day Scholar'}</p>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 opacity-60 ${isDenied || isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {translate('digitalPass.logisticsLabel', 'Logistics')}
+                            </p>
+                            <p className={`text-[14px] font-[900] ${isDenied || isExpired ? 'text-rose-900' : 'text-[#1a2b3c]'}`}>{studentData?.hostel || studentData?.hostel_type || translate('digitalPass.dayScholar', 'Day Scholar')}</p>
                         </div>
                     </div>
                 )}
@@ -237,10 +305,16 @@ const DailyDigitalPass = React.forwardRef(({
                                             ? 'text-purple-800' 
                                             : 'text-[#7e22ce]'
                             }`}>
-                                {isDenied ? 'ACCESS DENIED' : isVisitorPass ? 'Official Gate Auth' : 'Verified VID'}
+                                {isDenied 
+                                    ? translate('digitalPass.accessDenied', 'ACCESS DENIED') 
+                                    : isVisitorPass 
+                                        ? translate('digitalPass.officialGateAuth', 'Official Gate Auth') 
+                                        : translate('digitalPass.verifiedVid', 'Verified VID')}
                             </p>
                             <p className={`font-bold text-[8px] uppercase tracking-[0.2em] ${isDenied ? 'text-rose-400' : 'text-slate-400'}`}>
-                                {isDenied ? 'Policy Violation Logged' : 'Institutional Security'}
+                                {isDenied 
+                                    ? translate('digitalPass.policyViolationLogged', 'Policy Violation Logged') 
+                                    : translate('digitalPass.institutionalSecurity', 'Institutional Security')}
                             </p>
                         </div>
                     </div>

@@ -139,20 +139,20 @@ const GuardHome = ({ guardData }) => {
 
         if (passCategory === 'PARENT') {
             if (!visitorName.trim()) {
-                setGenerateError("Please enter the Visitor / Parent Full Name");
+                setGenerateError(t('guard.passModal.errorParentName'));
                 return;
             }
             if (!visitorPhone.trim() || visitorPhone.trim().length < 6) {
-                setGenerateError("Please enter a valid Contact / Mobile Number");
+                setGenerateError(t('guard.passModal.errorPhone'));
                 return;
             }
         } else {
             if (!joinerName.trim()) {
-                setGenerateError("Please enter Candidate / Joining Member Full Name");
+                setGenerateError(t('guard.passModal.errorJoinerName'));
                 return;
             }
             if (!joinerPhone.trim() || joinerPhone.trim().length < 6) {
-                setGenerateError("Please enter a valid Contact / Mobile Number");
+                setGenerateError(t('guard.passModal.errorPhone'));
                 return;
             }
         }
@@ -502,12 +502,12 @@ const GuardHome = ({ guardData }) => {
                         <div className="text-left">
                             <div className="flex items-center gap-2 mb-0.5">
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/25 px-2 py-0.5 rounded-full">
-                                    Visitor / Guest Pass
+                                    {t('guard.passModal.visitorGuestBadge')}
                                 </span>
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
                             </div>
-                            <h3 className="text-lg font-black tracking-tight leading-tight">Generate Visitor Pass</h3>
-                            <p className="text-xs text-white/85 font-medium">For outer parents, visitors & new joining members</p>
+                            <h3 className="text-lg font-black tracking-tight leading-tight">{t('guard.passModal.generateVisitorPass')}</h3>
+                            <p className="text-xs text-white/85 font-medium">{t('guard.passModal.visitorPassSubtitle')}</p>
                         </div>
                     </div>
 
@@ -603,8 +603,8 @@ const GuardHome = ({ guardData }) => {
                                     <Ticket className="w-5 h-5 text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-black tracking-tight leading-tight">Generate Gate Pass</h3>
-                                    <p className="text-xs text-white/80 font-medium">Issue pass for outer parents or new joining members</p>
+                                    <h3 className="text-lg font-black tracking-tight leading-tight">{t('guard.passModal.modalTitle')}</h3>
+                                    <p className="text-xs text-white/80 font-medium">{t('guard.passModal.modalSubtitle')}</p>
                                 </div>
                             </div>
                             <button 
@@ -631,7 +631,7 @@ const GuardHome = ({ guardData }) => {
                                     }`}
                                 >
                                     <Users className="w-4 h-4" />
-                                    <span>Outer Parent / Visitor</span>
+                                    <span>{t('guard.passModal.tabParent')}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -646,7 +646,7 @@ const GuardHome = ({ guardData }) => {
                                     }`}
                                 >
                                     <GraduationCap className="w-4 h-4" />
-                                    <span>New Joining Member</span>
+                                    <span>{t('guard.passModal.tabNewJoiner')}</span>
                                 </button>
                             </div>
                         </div>
@@ -659,14 +659,14 @@ const GuardHome = ({ guardData }) => {
                                     {/* Visitor Full Name */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Parent / Visitor Full Name <span className="text-rose-500">*</span>
+                                            {t('guard.passModal.parentNameLabel')} <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
                                             <UserCheck className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="text"
                                                 required
-                                                placeholder="e.g. Ramesh Kumar (Parent/Guardian)"
+                                                placeholder={t('guard.passModal.parentNamePlaceholder')}
                                                 value={visitorName}
                                                 onChange={(e) => setVisitorName(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#f47c20] focus:bg-white transition-all shadow-inner"
@@ -677,14 +677,14 @@ const GuardHome = ({ guardData }) => {
                                     {/* Visitor Phone Number */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Mobile / Contact Number <span className="text-rose-500">*</span>
+                                            {t('guard.passModal.mobileLabel')} <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
                                             <Phone className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="tel"
                                                 required
-                                                placeholder="e.g. 9876543210"
+                                                placeholder={t('guard.passModal.mobilePlaceholder')}
                                                 value={visitorPhone}
                                                 onChange={(e) => setVisitorPhone(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#f47c20] focus:bg-white transition-all shadow-inner"
@@ -696,15 +696,15 @@ const GuardHome = ({ guardData }) => {
                                     <div>
                                         <div className="flex items-center justify-between mb-1.5">
                                             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                                Visiting Student Roll No. / Ward ID
+                                                {t('guard.passModal.wardRollLabel')}
                                             </label>
-                                            <span className="text-[10px] font-bold text-gray-400">(Optional)</span>
+                                            <span className="text-[10px] font-bold text-gray-400">{t('guard.passModal.optional')}</span>
                                         </div>
                                         <div className="relative">
                                             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="text"
-                                                placeholder="e.g. 24pa1a45b4 (Lookup student)"
+                                                placeholder={t('guard.passModal.wardRollPlaceholder')}
                                                 value={visitingStudentRoll}
                                                 onChange={(e) => {
                                                     setVisitingStudentRoll(e.target.value);
@@ -730,13 +730,13 @@ const GuardHome = ({ guardData }) => {
                                                     )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-black text-gray-900 truncate">Ward: {searchedStudent.full_name}</p>
+                                                    <p className="text-xs font-black text-gray-900 truncate">{t('guard.passModal.wardPrefix')}: {searchedStudent.full_name}</p>
                                                     <p className="text-[10px] font-bold text-gray-500 uppercase">
                                                         {searchedStudent.student_id} • {searchedStudent.departments?.name || 'Department'}
                                                     </p>
                                                 </div>
                                                 <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase">
-                                                    Student Verified
+                                                    {t('guard.passModal.studentVerified')}
                                                 </span>
                                             </div>
                                         )}
@@ -745,35 +745,35 @@ const GuardHome = ({ guardData }) => {
                                     {/* Purpose of Visit */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-2">
-                                            Purpose of Visit
+                                            {t('guard.passModal.purposeLabel')}
                                         </label>
                                         <div className="flex flex-wrap gap-1.5">
                                             {[
-                                                'Parent Meeting / Ward Visit',
-                                                'Fee Payment / Accounts',
-                                                'Principal / HOD Meeting',
-                                                'Hostel / Campus Visit',
-                                                'Medical / Emergency',
-                                                'Other'
+                                                { id: 'Parent Meeting / Ward Visit', labelKey: 'guard.passModal.purposeParentMeeting' },
+                                                { id: 'Fee Payment / Accounts', labelKey: 'guard.passModal.purposeFeePayment' },
+                                                { id: 'Principal / HOD Meeting', labelKey: 'guard.passModal.purposePrincipalMeeting' },
+                                                { id: 'Hostel / Campus Visit', labelKey: 'guard.passModal.purposeHostelVisit' },
+                                                { id: 'Medical / Emergency', labelKey: 'guard.passModal.purposeMedical' },
+                                                { id: 'Other', labelKey: 'guard.passModal.purposeOther' }
                                             ].map(purpose => (
                                                 <button
-                                                    key={purpose}
+                                                    key={purpose.id}
                                                     type="button"
-                                                    onClick={() => setVisitorPurpose(purpose)}
+                                                    onClick={() => setVisitorPurpose(purpose.id)}
                                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                                        visitorPurpose === purpose
+                                                        visitorPurpose === purpose.id
                                                             ? 'bg-[#f47c20] text-white shadow-sm'
                                                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
                                                     }`}
                                                 >
-                                                    {purpose}
+                                                    {t(purpose.labelKey)}
                                                 </button>
                                             ))}
                                         </div>
                                         {visitorPurpose === 'Other' && (
                                             <input 
                                                 type="text"
-                                                placeholder="Specify custom purpose..."
+                                                placeholder={t('guard.passModal.customPurposePlaceholder')}
                                                 value={customVisitorPurpose}
                                                 onChange={(e) => setCustomVisitorPurpose(e.target.value)}
                                                 className="w-full mt-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#f47c20]"
@@ -785,26 +785,26 @@ const GuardHome = ({ guardData }) => {
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                                Persons Count
+                                                {t('guard.passModal.personsCountLabel')}
                                             </label>
                                             <select
                                                 value={visitorCount}
                                                 onChange={(e) => setVisitorCount(e.target.value)}
                                                 className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:border-[#f47c20]"
                                             >
-                                                <option value="1">1 Person</option>
-                                                <option value="2">2 Persons</option>
-                                                <option value="3">3 Persons</option>
-                                                <option value="4+">4+ Persons</option>
+                                                <option value="1">{t('guard.passModal.person1')}</option>
+                                                <option value="2">{t('guard.passModal.person2')}</option>
+                                                <option value="3">{t('guard.passModal.person3')}</option>
+                                                <option value="4+">{t('guard.passModal.person4Plus')}</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                                Vehicle / ID Details
+                                                {t('guard.passModal.vehicleLabel')}
                                             </label>
                                             <input
                                                 type="text"
-                                                placeholder="e.g. AP39 XX 1234"
+                                                placeholder={t('guard.passModal.vehiclePlaceholder')}
                                                 value={visitorVehicle}
                                                 onChange={(e) => setVisitorVehicle(e.target.value)}
                                                 className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#f47c20]"
@@ -820,14 +820,14 @@ const GuardHome = ({ guardData }) => {
                                     {/* Candidate Full Name */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Candidate / Joiner Full Name <span className="text-rose-500">*</span>
+                                            {t('guard.passModal.joinerNameLabel')} <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
                                             <UserPlus className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="text"
                                                 required
-                                                placeholder="e.g. Sai Kumar (New Student / Staff)"
+                                                placeholder={t('guard.passModal.joinerNamePlaceholder')}
                                                 value={joinerName}
                                                 onChange={(e) => setJoinerName(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#1a2b3c] focus:bg-white transition-all shadow-inner"
@@ -838,14 +838,14 @@ const GuardHome = ({ guardData }) => {
                                     {/* Mobile Number */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Mobile / Contact Number <span className="text-rose-500">*</span>
+                                            {t('guard.passModal.mobileLabel')} <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
                                             <Phone className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="tel"
                                                 required
-                                                placeholder="e.g. 9876543210"
+                                                placeholder={t('guard.passModal.mobilePlaceholder')}
                                                 value={joinerPhone}
                                                 onChange={(e) => setJoinerPhone(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#1a2b3c] focus:bg-white transition-all shadow-inner"
@@ -857,15 +857,15 @@ const GuardHome = ({ guardData }) => {
                                     <div>
                                         <div className="flex items-center justify-between mb-1.5">
                                             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                                Application No. / Temp ID / Rank
+                                                {t('guard.passModal.appNoLabel')}
                                             </label>
-                                            <span className="text-[10px] font-bold text-gray-400">(Optional)</span>
+                                            <span className="text-[10px] font-bold text-gray-400">{t('guard.passModal.optional')}</span>
                                         </div>
                                         <div className="relative">
                                             <FileText className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                                             <input 
                                                 type="text"
-                                                placeholder="e.g. ADM-2024-091 or EAMCET Rank"
+                                                placeholder={t('guard.passModal.appNoPlaceholder')}
                                                 value={applicationNo}
                                                 onChange={(e) => setApplicationNo(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#1a2b3c] focus:bg-white transition-all shadow-inner"
@@ -876,7 +876,7 @@ const GuardHome = ({ guardData }) => {
                                     {/* Department / Stream */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Department / Branch
+                                            {t('guard.passModal.deptLabel')}
                                         </label>
                                         <div className="relative">
                                             <Building2 className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -901,36 +901,36 @@ const GuardHome = ({ guardData }) => {
                                     {/* Purpose of Visit */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-2">
-                                            Joining Purpose / Action
+                                            {t('guard.passModal.joiningPurposeLabel')}
                                         </label>
                                         <div className="flex flex-wrap gap-1.5">
                                             {[
-                                                'New Admission / Reporting',
-                                                'Counseling & Seat Allotment',
-                                                'Document Verification',
-                                                'Hostel Allotment / Room',
-                                                'Fee Payment / Accounts',
-                                                'Campus Tour',
-                                                'Other'
+                                                { id: 'New Admission / Reporting', labelKey: 'guard.passModal.purposeNewAdmission' },
+                                                { id: 'Counseling & Seat Allotment', labelKey: 'guard.passModal.purposeCounseling' },
+                                                { id: 'Document Verification', labelKey: 'guard.passModal.purposeDocVerification' },
+                                                { id: 'Hostel Allotment / Room', labelKey: 'guard.passModal.purposeHostelAllotment' },
+                                                { id: 'Fee Payment / Accounts', labelKey: 'guard.passModal.purposeFeePayment' },
+                                                { id: 'Campus Tour', labelKey: 'guard.passModal.purposeCampusTour' },
+                                                { id: 'Other', labelKey: 'guard.passModal.purposeOther' }
                                             ].map(purpose => (
                                                 <button
-                                                    key={purpose}
+                                                    key={purpose.id}
                                                     type="button"
-                                                    onClick={() => setJoinerPurpose(purpose)}
+                                                    onClick={() => setJoinerPurpose(purpose.id)}
                                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                                        joinerPurpose === purpose
+                                                        joinerPurpose === purpose.id
                                                             ? 'bg-[#1a2b3c] text-white shadow-sm'
                                                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
                                                     }`}
                                                 >
-                                                    {purpose}
+                                                    {t(purpose.labelKey)}
                                                 </button>
                                             ))}
                                         </div>
                                         {joinerPurpose === 'Other' && (
                                             <input 
                                                 type="text"
-                                                placeholder="Specify custom purpose..."
+                                                placeholder={t('guard.passModal.customPurposePlaceholder')}
                                                 value={customJoinerPurpose}
                                                 onChange={(e) => setCustomJoinerPurpose(e.target.value)}
                                                 className="w-full mt-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#1a2b3c]"
@@ -941,17 +941,17 @@ const GuardHome = ({ guardData }) => {
                                     {/* Accompanying Persons */}
                                     <div>
                                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                            Accompanying Persons Count
+                                            {t('guard.passModal.accompanyingLabel')}
                                         </label>
                                         <select
                                             value={joinerCount}
                                             onChange={(e) => setJoinerCount(e.target.value)}
                                             className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:border-[#1a2b3c]"
                                         >
-                                            <option value="1">1 Person (Candidate Only)</option>
-                                            <option value="2">2 Persons (Candidate + 1 Parent)</option>
-                                            <option value="3">3 Persons (Candidate + 2 Parents)</option>
-                                            <option value="4+">4+ Persons</option>
+                                            <option value="1">{t('guard.passModal.joinerPerson1')}</option>
+                                            <option value="2">{t('guard.passModal.joinerPerson2')}</option>
+                                            <option value="3">{t('guard.passModal.joinerPerson3')}</option>
+                                            <option value="4+">{t('guard.passModal.joinerPerson4Plus')}</option>
                                         </select>
                                     </div>
                                 </>
@@ -960,7 +960,7 @@ const GuardHome = ({ guardData }) => {
                             {/* Movement Type (IN / OUT) */}
                             <div>
                                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-2">
-                                    Movement Authorization
+                                    {t('guard.passModal.movementAuthLabel')}
                                 </label>
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
@@ -973,7 +973,7 @@ const GuardHome = ({ guardData }) => {
                                         }`}
                                     >
                                         <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                                        Entry (IN)
+                                        {t('guard.passModal.entryIn')}
                                     </button>
                                     <button
                                         type="button"
@@ -985,14 +985,14 @@ const GuardHome = ({ guardData }) => {
                                         }`}
                                     >
                                         <span className="w-2 h-2 rounded-full bg-amber-400" />
-                                        Exit (OUT)
+                                        {t('guard.passModal.exitOut')}
                                     </button>
                                 </div>
                             </div>
 
                             {/* Gate Display */}
                             <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between text-xs">
-                                <span className="font-bold text-gray-400 uppercase tracking-wider">Gate Assigned:</span>
+                                <span className="font-bold text-gray-400 uppercase tracking-wider">{t('guard.passModal.gateAssigned')}</span>
                                 <span className="font-black text-[#1a2b3c]">{resolvedGateName || guardData?.guard_gates?.name || guardData?.gate_name || 'Main Campus Gate'}</span>
                             </div>
 
@@ -1011,12 +1011,12 @@ const GuardHome = ({ guardData }) => {
                                 {generatingPass ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        <span>Generating Authorized Pass...</span>
+                                        <span>{t('guard.passModal.generating')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <Sparkles className="w-4 h-4" />
-                                        <span>Generate & Authorize Pass</span>
+                                        <span>{t('guard.passModal.generateSubmit')}</span>
                                     </>
                                 )}
                             </button>
@@ -1039,7 +1039,7 @@ const GuardHome = ({ guardData }) => {
                         <div className="flex items-center justify-between mb-3">
                             <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Pass Generated
+                                {t('guard.passModal.passGenerated')}
                             </span>
                             <button 
                                 onClick={() => setVisitorQrModal(null)}
@@ -1051,10 +1051,10 @@ const GuardHome = ({ guardData }) => {
 
                         {/* Title */}
                         <h3 className="text-xl font-black text-[#1a2b3c] tracking-tight leading-tight">
-                            Scan for Visitor Pass
+                            {t('guard.passModal.scanTitle')}
                         </h3>
                         <p className="text-xs text-gray-500 font-medium mt-1">
-                            Ask the visitor to scan this QR code with their phone camera to open their digital pass.
+                            {t('guard.passModal.scanDesc')}
                         </p>
 
                         {/* QR Code Container */}
@@ -1087,7 +1087,7 @@ const GuardHome = ({ guardData }) => {
                                 className="w-full py-3.5 bg-[#1a2b3c] hover:bg-black text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                             >
                                 <ShieldCheck className="w-4 h-4 text-[#f47c20]" />
-                                <span>View Pass Details</span>
+                                <span>{t('guard.passModal.viewDetails')}</span>
                             </button>
 
                             <button
@@ -1104,12 +1104,12 @@ const GuardHome = ({ guardData }) => {
                                 {copiedUrl ? (
                                     <>
                                         <Check className="w-4 h-4 text-emerald-600" />
-                                        <span className="text-emerald-700">Pass Link Copied!</span>
+                                        <span className="text-emerald-700">{t('guard.passModal.urlCopied')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <Copy className="w-4 h-4 text-gray-500" />
-                                        <span>Copy Pass URL</span>
+                                        <span>{t('guard.passModal.copyUrl')}</span>
                                     </>
                                 )}
                             </button>
